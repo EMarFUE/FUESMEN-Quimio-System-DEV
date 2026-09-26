@@ -1,0 +1,398 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Agenda semanal · Servicio de quimioterapia</title>
+  <link rel="stylesheet" href="../css/styles.css" />
+</head>
+<body style="visibility:hidden">
+  <div class="contenedor-ancho">
+    <div id="mensaje-agenda" class="mensaje-info" style="display:none;"></div>
+
+    <div class="barra-controles-grilla">
+      <div id="selector-sede-grilla" class="selector-sede-grilla"></div>
+      <select id="filtro-medico-grilla" class="filtro-medico-grilla" onchange="cambiarFiltroMedicoGrilla(this.value)">
+        <option value="">Todos los médicos</option>
+      </select>
+      <button type="button" id="boton-nuevo-turno-grilla" class="boton-principal" style="display:none;width:auto;"
+        onclick="abrirModalNuevoTurnoGrilla()">+ Nuevo turno</button>
+      <!-- Etapa T10: mismo criterio de rol que "+ Nuevo turno" (administrativo no lo ve) —
+           ver iniciarAgenda() en turnero-grilla.js. -->
+      <button type="button" id="boton-consultar-disponibilidad-grilla" class="boton-secundario" style="display:none;width:auto;"
+        onclick="abrirConsultaDisponibilidadGrilla()">Consultar disponibilidad</button>
+      <div class="navegacion-semana-grilla">
+        <button type="button" onclick="cambiarSemanaGrilla(-1)">‹ Semana anterior</button>
+        <span class="etiqueta-semana-grilla" id="etiqueta-semana-grilla"></span>
+        <button type="button" onclick="irASemanaActualGrilla()">Hoy</button>
+        <button type="button" onclick="cambiarSemanaGrilla(1)">Semana siguiente ›</button>
+        <div class="menu-cuenta-grilla">
+          <button type="button" class="boton-menu-cuenta-grilla" onclick="alternarMenuCuentaGrilla(event)" title="Cuenta">☰</button>
+          <div class="panel-menu-cuenta-grilla" id="panel-menu-cuenta-grilla" style="display:none;">
+            <div class="datos-sesion-menu-grilla" id="datos-sesion"></div>
+            <a href="index.html" class="opcion-menu-cuenta-grilla">← Volver a Turnero</a>
+            <button type="button" class="opcion-menu-cuenta-grilla" onclick="cerrarSesion('../login.html')">Cerrar sesión</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="grilla-scroll-grilla">
+      <div id="grilla-contenedor">
+        <p style="color:var(--color-muted);padding:20px;">Cargando...</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal "+ nuevo turno" (Fase 2) — mismo formulario de carga.html, sin tocar
+       su lógica interna (turnero-carga.js). carga.html sigue existiendo aparte,
+       como acceso alternativo solo para administrador. -->
+  <div class="overlay-modal" id="overlay-nuevo-turno-grilla" style="display:none;">
+    <div class="modal-panel" style="max-width:640px;">
+      <div class="modal-encabezado">
+        <button type="button" class="modal-cerrar" onclick="cerrarModalNuevoTurnoGrilla()">×</button>
+      </div>
+      <h2 style="margin-top:0;">Nuevo turno</h2>
+
+      <div id="mensaje-general" class="mensaje-info" style="display:none;"></div>
+
+      <div id="contenido-carga">
+        <div class="tarjeta-formulario" style="border:none;padding:0;">
+
+          <div class="titulo-bloque">A quién pertenece</div>
+          <div id="paciente-seleccionado" class="paciente-seleccionado" style="display:none;">
+            <span id="texto-paciente-seleccionado"></span>
+            <button type="button" class="enlace-accion peligro" onclick="quitarPacienteSeleccionado()">quitar</button>
+          </div>
+          <div id="bloque-busqueda-paciente">
+            <div class="campo">
+              <input type="text" id="campo-buscar-paciente" placeholder="Buscar por apellido, nombre o documento" />
+            </div>
+            <div id="resultados-busqueda-paciente"></div>
+            <div id="sin-resultados" style="display:none;font-size:13px;color:var(--color-muted);margin-bottom:8px;">
+              No se encontró ningún paciente. Podés darlo de alta:
+              <button type="button" class="enlace-accion" onclick="mostrarAltaRapida()">dar de alta</button>
+              <button type="button" id="boton-actualizar-pacientes" class="enlace-accion" onclick="actualizarListadoPacientes()">actualizar listado</button>
+            </div>
+            <div id="bloque-alta-rapida" class="bloque-alta-rapida" style="display:none;">
+              <div class="fila-3">
+                <div class="campo" style="margin-bottom:0;">
+                  <label>Tipo de documento</label>
+                  <select id="alta-tipo-documento">
+                    <option value="DNI">DNI</option>
+                    <option value="LC">Libreta cívica</option>
+                    <option value="LE">Libreta de enrolamiento</option>
+                  </select>
+                </div>
+                <div class="campo" style="margin-bottom:0;">
+                  <label>Número de documento</label>
+                  <input type="text" id="alta-numero-documento" inputmode="numeric" placeholder="Sin puntos ni espacios" />
+                </div>
+                <div class="campo" style="margin-bottom:0;">
+                  <label>&nbsp;</label>
+                  <button type="button" class="boton-principal" onclick="altaRapidaPaciente()">Guardar paciente</button>
+                </div>
+              </div>
+              <div class="fila-2">
+                <div class="campo" style="margin-bottom:0;">
+                  <label>Nombre</label>
+                  <input type="text" id="alta-nombre" />
+                </div>
+                <div class="campo" style="margin-bottom:0;">
+                  <label>Apellido</label>
+                  <input type="text" id="alta-apellido" />
+                </div>
+              </div>
+              <div class="campo">
+                <label>Obra social</label>
+                <select id="alta-obra-social">
+                  <option value="">Elegir obra social</option>
+                </select>
+              </div>
+              <div id="mensaje-alta-rapida" class="mensaje-info error" style="display:none;margin-top:10px;"></div>
+            </div>
+          </div>
+
+          <div class="titulo-bloque" style="margin-top:8px;">Médico tratante</div>
+          <div class="fila-2">
+            <div class="campo" style="margin-bottom:0;">
+              <label>Médico</label>
+              <select id="campo-medico"></select>
+            </div>
+            <div class="campo" style="margin-bottom:0;">
+              <label>Sede</label>
+              <div id="sede-automatica-info" style="display:none;padding-top:8px;">
+                <span class="badge" id="badge-sede-automatica"></span>
+              </div>
+              <div id="aviso-sede-indefinida" style="display:none;font-size:12.5px;color:var(--color-muted);margin-bottom:6px;">
+                Este médico no tiene días cargados en ninguna sede. Elegí la sede a mano.
+              </div>
+              <select id="campo-sede-manual" style="display:none;"></select>
+            </div>
+          </div>
+          <div class="campo" id="bloque-medico-otro" style="display:none;">
+            <label>Nombre del profesional</label>
+            <input type="text" id="campo-medico-otro-nombre" placeholder="Nombre y apellido" />
+          </div>
+
+          <div class="titulo-bloque" style="margin-top:8px;">Protocolo(s)</div>
+          <div id="lista-protocolos"></div>
+          <button type="button" class="enlace-accion" onclick="agregarFilaProtocolo()" style="margin-bottom:12px;">+ agregar otro protocolo</button>
+
+          <label class="check-linea">
+            <input type="checkbox" id="campo-premedicacion" />
+            Premedicación / control de signos vitales (+30 min fijos)
+          </label>
+
+          <div id="resumen-duracion" class="resumen-suma ok" style="margin:0 0 20px;"></div>
+
+          <label class="check-linea" id="bloque-sillon-backup" style="display:none;font-size:15px;font-weight:600;padding:10px 12px;background:var(--color-warning-soft);border:1px solid var(--color-warning);border-radius:6px;color:var(--color-warning-text);">
+            <input type="checkbox" id="campo-sillon-backup" style="width:18px;height:18px;vertical-align:middle;margin-right:6px;" />
+            Buscar únicamente en el puesto para inyectables
+          </label>
+
+          <div class="titulo-bloque">Ciclo y sesión</div>
+          <div class="fila-2">
+            <div class="campo" style="margin-bottom:0;">
+              <label>Ciclo</label>
+              <input type="number" id="campo-ciclo" min="1" step="1" placeholder="1" />
+            </div>
+            <div class="campo" style="margin-bottom:0;">
+              <label>Sesión</label>
+              <input type="number" id="campo-sesion" min="1" step="1" placeholder="1" />
+            </div>
+          </div>
+
+          <div class="titulo-bloque" style="margin-top:20px;">Fecha y horario</div>
+          <div style="font-size:12.5px;color:var(--color-muted);margin-bottom:10px;">
+            Para la fecha, el sistema va a intentar ubicar el turno el día que eligas. Si hay lugar disponible,
+            se guardará automáticamente en el mejor hueco encontrado (el que menos tiempo desperdicia).
+            Si no hay lugar en los próximos 10 días, se te ofrecerá la opción de cargar como sobreturno.
+          </div>
+
+          <div id="bloque-dias-turno" class="campo" style="margin-bottom:14px;">
+            <label>¿En cuántos días es el turno? (0 a 60)</label>
+            <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
+              <input type="number" id="campo-dias-turno" min="0" step="1" placeholder="Ej: 12" style="max-width:110px;" />
+              <button type="button" class="enlace-accion" onclick="usarTurnoHoy()">hoy</button>
+              <button type="button" class="enlace-accion" onclick="alternarModoFecha()">elegir fecha exacta en el calendario</button>
+            </div>
+            <div id="fecha-calculada-info" style="margin-top:8px;display:none;">
+              <span class="badge" id="badge-fecha-calculada"></span>
+            </div>
+          </div>
+
+          <div id="bloque-fecha-manual" class="campo" style="display:none;margin-bottom:14px;">
+            <label>Fecha exacta</label>
+            <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
+              <input type="date" id="campo-fecha" style="max-width:200px;" />
+              <button type="button" class="enlace-accion" onclick="alternarModoFecha()">volver a calcular por días</button>
+            </div>
+          </div>
+
+          <div id="bloque-horario-manual" class="campo" style="display:none;margin-bottom:14px;">
+            <label>Horario manual (opcional, forzado)</label>
+            <input type="time" id="campo-horario-manual" style="max-width:150px;" />
+          </div>
+
+          <div style="font-size:12.5px;color:var(--color-muted);margin-bottom:14px;padding:8px;background:#f9f9f9;border-radius:4px;">
+            ℹ️ El horario se asignará automáticamente según la disponibilidad encontrada, salvo que completes el horario manual de arriba (solo administrador).
+            Si lo completás, se fuerza ese horario por encima de la atadura de día, el cupo por porcentaje y la franja horaria del médico. Siempre
+            se respeta que haya sillón libre a esa hora, los bloqueos vigentes y el horario de apertura y cierre de la sede.
+          </div>
+
+          <button type="button" id="boton-guardar-turno" class="boton-principal" style="margin-top:20px;" onclick="intentarGuardarTurno()">Buscar disponibilidad y guardar turno</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Consulta de disponibilidad sin cargar (Etapa T10) — simulador de solo lectura:
+       corre el mismo motor que "+ nuevo turno" (buscarHuecosEnSede, llamado directo,
+       sin wrapper propio) pero nunca guarda nada. No pide paciente. Si se encuentra
+       lugar, "Cargar este turno" cierra este modal y abre "+ nuevo turno" con
+       médico/protocolo(s)/fecha precargados — el paciente se elige recién ahí, con el
+       flujo de guardado de siempre (ver cargarEsteTurnoDesdeConsultaGrilla). -->
+  <div class="overlay-modal" id="overlay-consulta-disponibilidad-grilla" style="display:none;">
+    <div class="modal-panel" style="max-width:560px;">
+      <div class="modal-encabezado">
+        <button type="button" class="modal-cerrar" onclick="cerrarConsultaDisponibilidadGrilla()">×</button>
+      </div>
+      <h2 style="margin-top:0;font-size:17px;">Consultar disponibilidad</h2>
+      <p style="font-size:12.5px;color:var(--color-muted);margin-top:0;">
+        Simulador: busca con el mismo motor que "+ Nuevo turno", pero no guarda nada.
+        Dejá la fecha en blanco para saber cuándo entraría; elegí una fecha puntual para
+        saber si ese día hay lugar.
+      </p>
+
+      <div class="fila-2">
+        <div class="campo" style="margin-bottom:0;">
+          <label>Sede</label>
+          <select id="select-sede-consulta-grilla"></select>
+        </div>
+        <div class="campo" style="margin-bottom:0;">
+          <label>Médico (opcional)</label>
+          <select id="select-medico-consulta-grilla"></select>
+        </div>
+      </div>
+
+      <div class="titulo-bloque" style="margin-top:8px;">Protocolo(s)</div>
+      <div id="lista-protocolos-consulta-grilla"></div>
+      <button type="button" class="enlace-accion" onclick="agregarFilaProtocoloConsultaGrilla()" style="margin-bottom:12px;">+ agregar otro protocolo</button>
+
+      <label class="check-linea">
+        <input type="checkbox" id="campo-premedicacion-consulta-grilla" onchange="actualizarResumenDuracionConsultaGrilla()" />
+        Premedicación / control de signos vitales (+30 min fijos)
+      </label>
+
+      <div id="resumen-duracion-consulta-grilla" class="resumen-suma ok" style="margin:0 0 20px;"></div>
+
+      <div class="campo">
+        <label>Fecha (opcional — vacío = buscar desde hoy)</label>
+        <input type="date" id="campo-fecha-consulta-grilla" style="max-width:200px;" />
+      </div>
+
+      <div id="mensaje-consulta-disponibilidad-grilla" class="mensaje-info" style="display:none;"></div>
+
+      <button type="button" id="boton-buscar-disponibilidad-grilla" class="boton-principal" style="margin-top:8px;" onclick="buscarDisponibilidadGrilla()">Buscar disponibilidad</button>
+
+      <div id="resultado-disponibilidad-grilla" style="margin-top:16px;"></div>
+    </div>
+  </div>
+
+  <!-- Detalle de turno (feedback tras Fase 3) — la tarjeta comprimida de la grilla solo
+       muestra sillón + apellido; acá va el resto al hacer clic/toque. -->
+  <div class="overlay-modal" id="overlay-detalle-turno-grilla" style="display:none;" onclick="cerrarDetalleTurnoGrillaSiFondo(event)">
+    <div class="modal-panel" style="max-width:420px;">
+      <div class="modal-encabezado">
+        <button type="button" class="modal-cerrar" onclick="cerrarDetalleTurnoGrilla()">×</button>
+      </div>
+      <div id="contenido-detalle-turno-grilla"></div>
+    </div>
+  </div>
+
+  <!-- Detalle de bloqueo (Fase 4) — de solo lectura para los cuatro roles; administrador
+       recibe además un enlace directo a la gestión completa de bloqueos. -->
+  <div class="overlay-modal" id="overlay-detalle-bloqueo-grilla" style="display:none;" onclick="cerrarDetalleBloqueoGrillaSiFondo(event)">
+    <div class="modal-panel" style="max-width:420px;">
+      <div class="modal-encabezado">
+        <button type="button" class="modal-cerrar" onclick="cerrarDetalleBloqueoGrilla()">×</button>
+      </div>
+      <div id="contenido-detalle-bloqueo-grilla"></div>
+    </div>
+  </div>
+
+  <!-- Motivo obligatorio del arrastre (Etapa T7) — se abre después de soltar en un
+       hueco válido, antes de guardar nada. -->
+  <div class="overlay-modal" id="overlay-motivo-arrastre-grilla" style="display:none;">
+    <div class="modal-panel" style="max-width:420px;">
+      <div class="modal-encabezado">
+        <button type="button" class="modal-cerrar" onclick="cancelarMotivoArrastreGrilla()">×</button>
+      </div>
+      <h2 style="margin-top:0;font-size:17px;">Motivo del cambio</h2>
+      <p id="texto-motivo-arrastre-grilla" style="font-size:13px;color:var(--color-muted);margin-top:0;"></p>
+      <textarea id="campo-motivo-arrastre-grilla" rows="3" style="width:100%;box-sizing:border-box;" placeholder="Ej: el paciente avisó que no puede venir ese día"></textarea>
+      <p id="error-motivo-arrastre-grilla" style="display:none;color:var(--color-danger);font-size:13px;margin:6px 0 0;">El motivo es obligatorio.</p>
+      <div style="display:flex;gap:10px;margin-top:14px;">
+        <button type="button" class="boton-secundario" style="width:auto;" onclick="cancelarMotivoArrastreGrilla()">Cancelar</button>
+        <button type="button" id="boton-confirmar-motivo-arrastre-grilla" class="boton-principal" style="width:auto;" onclick="confirmarMotivoArrastreGrilla()">Confirmar reasignación</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Reasignar por formulario (Etapa T7, Fase 1) — búsqueda de disponibilidad desde
+       una fecha de referencia elegida a mano, para el mismo médico/protocolo/duración
+       del turno. El paciente/médico/protocolo NO se tocan acá (eso es "Modificar"). -->
+  <div class="overlay-modal" id="overlay-reasignar-grilla" style="display:none;">
+    <div class="modal-panel" style="max-width:420px;">
+      <div class="modal-encabezado">
+        <button type="button" class="modal-cerrar" onclick="cerrarReasignarGrilla()">×</button>
+      </div>
+      <h2 style="margin-top:0;font-size:17px;">Reasignar turno</h2>
+      <div id="resumen-reasignar-grilla" style="margin-bottom:14px;"></div>
+      <label for="campo-fecha-reasignar-grilla" style="font-size:13px;color:var(--color-muted);">Buscar disponibilidad a partir de:</label>
+      <input type="date" id="campo-fecha-reasignar-grilla" style="max-width:200px;display:block;margin-top:4px;" />
+      <div id="mensaje-reasignar-grilla" class="mensaje-info" style="display:none;margin-top:10px;"></div>
+      <button type="button" id="boton-buscar-reasignar-grilla" class="boton-principal" style="margin-top:14px;" onclick="buscarReasignarGrilla()">Buscar disponibilidad</button>
+    </div>
+  </div>
+
+  <!-- Modificar por formulario (Etapa T7, Fase 1) — corrige sillón, médico,
+       protocolo(s)/duración, ciclo/sesión u obra social sin tocar fecha/horario de
+       inicio (eso es "Reasignar"). Interfaz propia, no comparte campos con
+       "+ nuevo turno" (ver nota de diseño en turnero-grilla.js). -->
+  <div class="overlay-modal" id="overlay-modificar-grilla" style="display:none;">
+    <div class="modal-panel" style="max-width:520px;">
+      <div class="modal-encabezado">
+        <button type="button" class="modal-cerrar" onclick="cerrarModificarGrilla()">×</button>
+      </div>
+      <h2 style="margin-top:0;font-size:17px;">Modificar turno</h2>
+      <div id="resumen-modificar-grilla" style="margin-bottom:14px;"></div>
+
+      <div class="titulo-bloque">Médico tratante</div>
+      <div class="campo" style="margin-bottom:0;">
+        <select id="campo-medico-modificar" onchange="actualizarBloqueMedicoOtroModificar()"></select>
+      </div>
+      <div class="campo" id="bloque-medico-otro-modificar" style="display:none;">
+        <label>Nombre del profesional</label>
+        <input type="text" id="campo-medico-otro-nombre-modificar" placeholder="Nombre y apellido" />
+      </div>
+
+      <div class="titulo-bloque" style="margin-top:14px;">Sillón</div>
+      <div class="campo" style="margin-bottom:0;">
+        <select id="campo-sillon-modificar"></select>
+      </div>
+
+      <div class="titulo-bloque" style="margin-top:14px;">Protocolo(s)</div>
+      <div id="lista-protocolos-modificar"></div>
+      <button type="button" class="enlace-accion" onclick="agregarFilaProtocoloModificar()" style="margin-bottom:12px;">+ agregar otro protocolo</button>
+
+      <label class="check-linea">
+        <input type="checkbox" id="campo-premedicacion-modificar" onchange="actualizarResumenDuracionModificar()" />
+        Premedicación / control de signos vitales (+30 min fijos)
+      </label>
+
+      <div id="resumen-duracion-modificar" class="resumen-suma ok" style="margin:0 0 20px;"></div>
+
+      <div class="titulo-bloque">Ciclo y sesión</div>
+      <div class="fila-2">
+        <div class="campo" style="margin-bottom:0;">
+          <label>Ciclo</label>
+          <input type="number" id="campo-ciclo-modificar" min="1" step="1" />
+        </div>
+        <div class="campo" style="margin-bottom:0;">
+          <label>Sesión</label>
+          <input type="number" id="campo-sesion-modificar" min="1" step="1" />
+        </div>
+      </div>
+
+      <div class="titulo-bloque">Obra social</div>
+      <div class="campo" style="margin-bottom:0;">
+        <input type="text" id="campo-obra-social-modificar" placeholder="Obra social" />
+        <div style="font-size:12px;color:var(--color-muted);margin-top:4px;">Corrige el dato guardado en este turno — no modifica la ficha del paciente.</div>
+      </div>
+
+      <div id="mensaje-modificar-grilla" class="mensaje-info" style="display:none;margin-top:14px;"></div>
+      <button type="button" id="boton-guardar-modificar-grilla" class="boton-principal" style="margin-top:16px;" onclick="guardarModificacionGrilla()">Guardar cambios</button>
+    </div>
+  </div>
+
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+  <script src="../js/firebase-config.js"></script>
+  <script src="../js/auth.js"></script>
+  <script src="../js/turnero-motor.js"></script>
+  <script src="../js/turnero-carga.js"></script>
+  <script src="../js/turnero-grilla.js"></script>
+  <script>
+    requireAuth(async (user, datosUsuario) => {
+      const rolLabel = ROLES[datosUsuario.rol] || datosUsuario.rol;
+      document.getElementById("datos-sesion").innerHTML =
+        `Hola, <strong>${escaparHtmlGrilla(datosUsuario.nombre || user.email)}</strong> · rol: <strong>${rolLabel}</strong>`;
+
+      await iniciarAgenda(user, datosUsuario);
+    }, "../login.html");
+  </script>
+</body>
+</html>

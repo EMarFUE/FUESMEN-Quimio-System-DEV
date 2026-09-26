@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Correcciones · Servicio de quimioterapia</title>
+  <link rel="stylesheet" href="../css/styles.css" />
+</head>
+<body style="visibility:hidden">
+  <div class="contenedor">
+    <div class="encabezado-sesion">
+      <div>
+        <img src="../assets/FUESMEN-Logo.png" alt="FUESMEN" style="height: 48px; width: auto; margin-bottom: 8px;" />
+        <div class="breadcrumb"><a href="../index.html">Inicio</a> &gt; <a href="index.html">Medicación</a> &gt; Correcciones</div>
+        <h1 style="margin-bottom:0;">Correcciones</h1>
+      </div>
+      <div style="text-align:right;">
+        <div class="datos-sesion" id="datos-sesion"></div>
+        <button class="boton-secundario" style="margin-top:8px;" onclick="cerrarSesion('../login.html')">Cerrar sesión</button>
+      </div>
+    </div>
+
+    <div id="mensaje-general-correcciones" class="mensaje-info" style="display:none;"></div>
+
+    <p style="font-size:13.5px;color:var(--color-muted);margin-top:-6px;margin-bottom:16px;">
+      Solicitudes de anulación o corrección de entregas y tratamientos. Ninguna afecta el stock
+      hasta que la aprobás. Las ya resueltas quedan igual en "Todas", con su estado.
+    </p>
+
+    <div class="filtro-tabs" id="filtro-tabs-correcciones">
+      <button type="button" class="filtro-tab activo" data-filtro="pendientes">Pendientes</button>
+      <button type="button" class="filtro-tab" data-filtro="todas">Todas</button>
+    </div>
+
+    <div style="overflow-x:auto;">
+      <table class="tabla">
+        <thead>
+          <tr>
+            <th>Fecha / solicitó</th>
+            <th>Origen / tipo</th>
+            <th>Paciente / depósito</th>
+            <th>Comprobante</th>
+            <th>Estado</th>
+            <th>Motivo</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody id="cuerpo-tabla-correcciones">
+          <tr><td colspan="7" style="color:var(--color-muted);">Cargando...</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div id="zona-cargar-mas-correcciones" style="text-align:center;margin-top:8px;display:none;">
+      <button type="button" class="boton-secundario" id="boton-cargar-mas-correcciones" onclick="cargarMasCorrecciones()">Cargar más</button>
+    </div>
+
+    <!-- Panel de revisión: mismo patrón de superposición modal que ya usa historial.html
+         para la solicitud de corrección. -->
+    <div id="panel-revision-correccion" class="overlay-modal" style="display:none;">
+      <div class="modal-panel" id="modal-panel-revision"></div>
+    </div>
+  </div>
+
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+  <script src="../js/firebase-config.js"></script>
+  <script src="../js/auth.js"></script>
+  <script src="../js/correcciones.js"></script>
+  <script>
+    // Pantalla exclusiva del administrador. Enfermería, médico y administrativo llegan
+    // acá solo si escriben la URL a mano (no hay ningún link visible para ellos en
+    // medicacion/index.html) — igual se bloquea del lado del cliente, y cualquier
+    // intento de escritura real queda bloqueado también por firestore.rules
+    // (esAdministrador() en el update de "correcciones", "entregas" y "egresos").
+    requireAuth(async (user, datosUsuario) => {
+      const rolLabel = ROLES[datosUsuario.rol] || datosUsuario.rol;
+      document.getElementById("datos-sesion").innerHTML =
+        `Hola, <strong>${escaparHtml(datosUsuario.nombre || user.email)}</strong> · rol: <strong>${rolLabel}</strong>`;
+
+      if (datosUsuario.rol !== "administrador") {
+        document.body.innerHTML = `
+          <div class="pantalla-error">
+            <p>Esta pantalla es exclusiva del administrador.</p>
+            <button onclick="cerrarSesion('../login.html')">Cerrar sesión</button>
+          </div>
+        `;
+        return;
+      }
+
+      await iniciarCorrecciones(user, datosUsuario);
+    }, "../login.html");
+  </script>
+</body>
+</html>

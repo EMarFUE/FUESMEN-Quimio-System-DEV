@@ -1,0 +1,493 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Comprobante de turno · Servicio de quimioterapia</title>
+  <style>
+    :root {
+      --color-primario: #5eb3e6;
+      --color-acento: #b3d946;
+      --color-texto: #1a1a1a;
+      --color-muted: #666;
+      --color-borde: #ddd;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      font-size: 12px;
+      color: var(--color-texto);
+      background: #f5f7fa;
+      padding: 20px;
+    }
+
+    #estado-carga {
+      text-align: center;
+      padding: 48px 0;
+      color: var(--color-muted);
+      font-size: 14px;
+    }
+
+    /* A diferencia del comprobante de Medicación, acá no hace falta empujar nada al pie
+       de la hoja (no hay bloque de firmas) — el contenedor crece con el contenido, sin
+       necesidad del truco de flex + min-height + margin-top:auto. */
+    #comprobante {
+      display: none;
+      position: relative;
+      background: #fff;
+      max-width: 720px;
+      margin: 0 auto;
+      padding: 24px 30px 26px;
+      border: 1px solid var(--color-borde);
+    }
+
+    /* Marca de agua ANULADO — solo cuando el turno fue cancelado (Opción B acordada con
+       Elías: reasignado/modificado NO llevan este sello grande, porque la sesión de
+       quimioterapia sí se terminó haciendo, solo que con datos actualizados; cancelado
+       sí implica que no se hizo). */
+    .comp-marca-agua {
+      display: none;
+      position: absolute;
+      top: 42%;
+      left: 50%;
+      transform: translate(-50%, -50%) rotate(-25deg);
+      font-size: 68px;
+      font-weight: 800;
+      letter-spacing: 6px;
+      color: rgba(161, 61, 61, 0.25);
+      -webkit-print-color-adjust: exact;
+      print-color-adjust: exact;
+      pointer-events: none;
+      white-space: nowrap;
+      z-index: 5;
+    }
+
+    .comp-aviso-cancelado {
+      display: none;
+      background: #fdecec;
+      border-left: 3px solid #a13d3d;
+      color: #7a2b2b;
+      padding: 6px 10px;
+      font-size: 10.5px;
+      margin-bottom: 10px;
+    }
+
+    /* Aviso discreto para reasignado/modificado: sin marca de agua, solo esta línea. */
+    .comp-aviso-reemplazado {
+      display: none;
+      background: #f5f7fa;
+      border-left: 3px solid var(--color-primario);
+      color: var(--color-muted);
+      padding: 6px 10px;
+      font-size: 10.5px;
+      margin-bottom: 10px;
+    }
+
+    .comp-aviso-corrige {
+      display: none;
+      background: #f5f7fa;
+      border-left: 3px solid var(--color-acento);
+      color: var(--color-muted);
+      padding: 6px 10px;
+      font-size: 10.5px;
+      margin-bottom: 10px;
+    }
+
+    /* ─── Encabezado compartido ─── */
+    .comp-encabezado {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      margin-bottom: 14px;
+      padding-bottom: 12px;
+      border-bottom: 2px solid var(--color-primario);
+    }
+    .comp-encabezado img { height: 34px; width: auto; }
+    .comp-encabezado-derecha { text-align: right; }
+    .comp-titulo {
+      font-size: 13px;
+      font-weight: 700;
+      color: var(--color-primario);
+      margin-bottom: 2px;
+    }
+    .comp-numero, .comp-fecha {
+      font-size: 11px;
+      color: var(--color-muted);
+    }
+
+    .bloque-titulo {
+      font-size: 10px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.07em;
+      color: var(--color-muted);
+      margin-bottom: 8px;
+      padding-bottom: 3px;
+      border-bottom: 1px solid var(--color-borde);
+    }
+
+    .comp-datos-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 0 24px;
+    }
+    .comp-dato-grupo { margin-bottom: 10px; }
+    .comp-dato-label {
+      font-size: 10px;
+      color: var(--color-muted);
+      margin-bottom: 1px;
+    }
+    .comp-dato-valor {
+      font-size: 13px;
+      font-weight: 600;
+    }
+
+    .comp-dato-grupo-ancho { grid-column: 1 / -1; }
+
+    /* ─── Etapa 2 (feedback post-testeo): bloque destacado de día/fecha/horario ─── */
+    /* Elías pidió darle mayor presencia al día y a la hora, en primer lugar y con
+       fuente más grande — se separa del grid uniforme de datos (que usa un solo tamaño
+       para todo) en una franja propia, apenas debajo del encabezado. */
+    .comp-destacado {
+      display: flex;
+      gap: 20px;
+      background: #f5f7fa;
+      border: 1px solid var(--color-borde);
+      border-left: 4px solid var(--color-primario);
+      border-radius: 4px;
+      padding: 10px 16px;
+      margin-bottom: 14px;
+    }
+    .comp-destacado-item { flex: 1; }
+    .comp-destacado-label {
+      font-size: 10px;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--color-muted);
+      margin-bottom: 2px;
+    }
+    .comp-destacado-valor {
+      font-size: 21px;
+      font-weight: 700;
+      color: var(--color-texto);
+      text-transform: capitalize;
+    }
+
+    /* ─── Leyenda de cierre: recordatorio de pasar por administración ─── */
+    .comp-leyenda-administracion {
+      margin-top: 16px;
+      background: #fff8e6;
+      border-left: 3px solid #c99a2e;
+      color: #6b4f0f;
+      padding: 8px 12px;
+      font-size: 11px;
+      line-height: 1.5;
+    }
+
+    /* ─── Botones pantalla ─── */
+    .comp-acciones {
+      max-width: 720px;
+      margin: 14px auto 0;
+      display: flex;
+      gap: 10px;
+    }
+    .comp-acciones button {
+      padding: 9px 18px;
+      border-radius: 4px;
+      font-size: 13px;
+      cursor: pointer;
+      border: 1px solid var(--color-borde);
+      background: #fff;
+    }
+    .comp-acciones button.primario {
+      background: var(--color-primario);
+      color: #fff;
+      border-color: var(--color-primario);
+      font-weight: 600;
+    }
+
+    /* ─── Print ─── */
+    @page {
+      size: A4;
+      margin: 12mm;
+    }
+    @media print {
+      body { background: #fff; padding: 0; }
+      #estado-carga { display: none !important; }
+      #comprobante {
+        display: block !important;
+        border: none;
+        max-width: 100%;
+        padding: 12px 14px 10px;
+        margin: 0;
+      }
+      .comp-acciones { display: none !important; }
+    }
+  </style>
+</head>
+<body>
+
+  <div id="estado-carga">Cargando comprobante…</div>
+
+  <div id="comprobante">
+
+    <div class="comp-marca-agua" id="comp-marca-agua">ANULADO</div>
+
+    <div class="comp-aviso-cancelado" id="comp-aviso-cancelado">
+      Este turno fue <strong>cancelado</strong> el <span id="comp-fecha-cancelacion"></span>.
+      <span id="comp-motivo-cancelacion"></span>
+    </div>
+
+    <div class="comp-aviso-reemplazado" id="comp-aviso-reemplazado"></div>
+
+    <div class="comp-aviso-corrige" id="comp-aviso-corrige"></div>
+
+    <!-- ── Encabezado ── -->
+    <div class="comp-encabezado">
+      <img src="../assets/FUESMEN-Logo.png" alt="FUESMEN" />
+      <div class="comp-encabezado-derecha">
+        <div class="comp-titulo">Comprobante de turno · Servicio de quimioterapia</div>
+        <div class="comp-numero" id="comp-numero"></div>
+        <div class="comp-fecha" id="comp-fecha-emision"></div>
+      </div>
+    </div>
+
+    <!-- Etapa 2 (feedback post-testeo): día/fecha y horario, destacados y en primer
+         lugar, antes del resto de los datos del turno. -->
+    <div class="comp-destacado">
+      <div class="comp-destacado-item">
+        <div class="comp-destacado-label">Día y fecha</div>
+        <div class="comp-destacado-valor" id="comp-fecha-turno"></div>
+      </div>
+      <div class="comp-destacado-item">
+        <div class="comp-destacado-label">Horario</div>
+        <div class="comp-destacado-valor" id="comp-horario"></div>
+      </div>
+    </div>
+
+    <div class="bloque-titulo">Datos del turno</div>
+    <div class="comp-datos-grid">
+      <div class="comp-dato-grupo">
+        <div class="comp-dato-label">Paciente</div>
+        <div class="comp-dato-valor" id="comp-paciente"></div>
+      </div>
+      <div class="comp-dato-grupo">
+        <div class="comp-dato-label">Obra social</div>
+        <div class="comp-dato-valor" id="comp-obra-social"></div>
+      </div>
+      <div class="comp-dato-grupo">
+        <div class="comp-dato-label">Médico</div>
+        <div class="comp-dato-valor" id="comp-medico"></div>
+      </div>
+      <div class="comp-dato-grupo">
+        <div class="comp-dato-label">Protocolo(s)</div>
+        <div class="comp-dato-valor" id="comp-protocolos"></div>
+      </div>
+      <div class="comp-dato-grupo">
+        <div class="comp-dato-label">Ciclo / Sesión</div>
+        <div class="comp-dato-valor" id="comp-ciclo-sesion"></div>
+      </div>
+      <div class="comp-dato-grupo">
+        <div class="comp-dato-label">Tiempo estimado de tratamiento</div>
+        <div class="comp-dato-valor" id="comp-duracion"></div>
+      </div>
+      <div class="comp-dato-grupo">
+        <div class="comp-dato-label">Sede</div>
+        <div class="comp-dato-valor" id="comp-sede"></div>
+      </div>
+      <div class="comp-dato-grupo comp-dato-grupo-ancho">
+        <div class="comp-dato-label">Dirección</div>
+        <div class="comp-dato-valor" id="comp-direccion"></div>
+      </div>
+    </div>
+
+    <div class="comp-leyenda-administracion">
+      Recuerde: al finalizar su atención en enfermería y en el sector de hospital de
+      día, debe pasar por el sector de <strong>Administración</strong> con este
+      comprobante para confirmar el turno. Un turno no confirmado se considera como no
+      realizado.
+    </div>
+
+  </div><!-- /comprobante -->
+
+  <div class="comp-acciones" id="comp-acciones" style="display:none;">
+    <button class="primario" onclick="window.print()">Imprimir</button>
+    <button onclick="window.close()">Cerrar</button>
+  </div>
+
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+  <script src="../js/firebase-config.js"></script>
+  <script src="../js/auth.js"></script>
+  <script>
+    // Página independiente (mismo criterio del resto del sistema): no comparte scope con
+    // turnero-motor.js/turnero-carga.js/turnero-grilla.js, así que no hace falta chequear
+    // colisión de nombres contra ellos. Direcciones de sede hardcodeadas acá también
+    // (duplicadas a propósito de turnero-carga.js, por la misma independencia por página).
+    const DIRECCION_SEDE_COMPROBANTE_TURNO = {
+      "emilio-civit": "Emilio Civit esq. Maza, San Rafael, Mza.",
+      "entre-rios": "Entre Ríos 345, San Rafael, Mza."
+    };
+
+    function formatearFechaHoraComprobanteTurno(timestamp) {
+      if (!timestamp) return "—";
+      const fecha = timestamp.toDate ? timestamp.toDate() : new Date(timestamp);
+      return fecha.toLocaleString("es-AR", {
+        day: "2-digit", month: "2-digit", year: "numeric",
+        hour: "2-digit", minute: "2-digit"
+      });
+    }
+
+    // Etapa 2, punto 6: d.fecha es un string ISO plano ("aaaa-mm-dd"), no un Timestamp de
+    // Firestore — no se puede reutilizar formatearFechaHoraComprobanteTurno() de arriba
+    // tal cual: pasar "2026-09-08" por "new Date(...)" lo interpreta como medianoche UTC,
+    // y toLocaleString en huso de Argentina (UTC-3) puede mostrar el día anterior. Se
+    // parsea a mano, mismo criterio que fechaDesdeISO() en turnero-motor.js (evita pasar
+    // por UTC). Esta pantalla es deliberadamente independiente de los otros archivos del
+    // proyecto (ver DIRECCION_SEDE_COMPROBANTE_TURNO más abajo), así que la función queda
+    // acá, no importada.
+    function formatearFechaISOComprobanteTurno(fechaISOString) {
+      if (!fechaISOString) return "-";
+      const coincidencia = /^(\d{4})-(\d{2})-(\d{2})$/.exec(fechaISOString);
+      if (!coincidencia) return fechaISOString; // formato inesperado: se muestra tal cual, sin romper
+      const [, anio, mes, dia] = coincidencia;
+      return `${dia}/${mes}/${anio}`;
+    }
+
+    // Etapa 2 (feedback post-testeo): día de la semana al lado de la fecha en números.
+    // new Date(anio, mes-1, dia) es el constructor "local" (no pasa por UTC) — mismo
+    // criterio que fechaDesdeISO() en turnero-motor.js, evita el mismo corrimiento de
+    // día por huso horario que ya se cuidó al formatear la fecha en sí.
+    const DIAS_SEMANA_COMPROBANTE_TURNO = [
+      "domingo", "lunes", "martes", "miércoles", "jueves", "viernes", "sábado"
+    ];
+    function formatearFechaConDiaComprobanteTurno(fechaISOString) {
+      const fechaFormateada = formatearFechaISOComprobanteTurno(fechaISOString);
+      const coincidencia = /^(\d{4})-(\d{2})-(\d{2})$/.exec(fechaISOString || "");
+      if (!coincidencia) return fechaFormateada;
+      const [, anio, mes, dia] = coincidencia;
+      const fechaObjeto = new Date(Number(anio), Number(mes) - 1, Number(dia));
+      const nombreDia = DIAS_SEMANA_COMPROBANTE_TURNO[fechaObjeto.getDay()];
+      return `${nombreDia} ${fechaFormateada}`;
+    }
+
+    // Tiempo estimado de tratamiento: duracionTotalMinutos ya viene calculado desde la
+    // carga del turno (suma de protocolos + premedicación, turnero-carga.js), no hace
+    // falta recalcular nada acá — solo darle formato legible.
+    function formatearDuracionComprobanteTurno(minutos) {
+      const total = Number(minutos);
+      if (!total || total <= 0) return "-";
+      const horas = Math.floor(total / 60);
+      const mins = total % 60;
+      if (horas === 0) return `${mins} min`;
+      if (mins === 0) return `${horas} h`;
+      return `${horas} h ${mins} min`;
+    }
+
+    // Todo el contenido de este comprobante se pinta con .textContent (nunca innerHTML),
+    // así que no hace falta ninguna función de escape de HTML.
+
+    async function cargarComprobanteTurno(turnoId) {
+      try {
+        const doc = await db.collection("turnos").doc(turnoId).get();
+        if (!doc.exists) {
+          document.getElementById("estado-carga").textContent = "No se encontró el turno.";
+          return false;
+        }
+
+        const d = doc.data();
+
+        document.getElementById("comp-numero").textContent =
+          d.numeroComprobante ? `N.° ${d.numeroComprobante}` : `ID: ${doc.id}`;
+        document.getElementById("comp-fecha-emision").textContent =
+          formatearFechaHoraComprobanteTurno(d.creadoEn);
+
+        const paciente = d.paciente || {};
+        document.getElementById("comp-paciente").textContent =
+          `${paciente.apellido || ""}, ${paciente.nombre || ""}`.trim() || "-";
+        document.getElementById("comp-obra-social").textContent = paciente.obraSocial || "-";
+        document.getElementById("comp-medico").textContent = d.medicoNombre || "-";
+        document.getElementById("comp-protocolos").textContent =
+          (d.protocolos || []).map((p) => (p && p.nombre) || p).join(", ") || "-";
+        document.getElementById("comp-ciclo-sesion").textContent =
+          (d.ciclo != null || d.sesion != null) ? `${d.ciclo ?? "-"} / ${d.sesion ?? "-"}` : "-";
+        document.getElementById("comp-fecha-turno").textContent = formatearFechaConDiaComprobanteTurno(d.fecha);
+        document.getElementById("comp-horario").textContent =
+          d.horarioInicio ? `${d.horarioInicio}hs` : "-";
+        document.getElementById("comp-duracion").textContent =
+          formatearDuracionComprobanteTurno(d.duracionTotalMinutos);
+        document.getElementById("comp-sede").textContent = d.sedeNombre || "-";
+        document.getElementById("comp-direccion").textContent =
+          DIRECCION_SEDE_COMPROBANTE_TURNO[d.sedeId] || "-";
+
+        // Estado del turno (Etapa T7/T8) — Opción B acordada: solo "cancelado" lleva la
+        // marca de agua grande; "reasignado"/"modificado" muestran un aviso discreto,
+        // porque la sesión igual se terminó haciendo, solo con datos actualizados.
+        if (d.estado === "cancelado") {
+          document.getElementById("comp-marca-agua").style.display = "block";
+          document.getElementById("comp-aviso-cancelado").style.display = "block";
+          document.getElementById("comp-fecha-cancelacion").textContent =
+            formatearFechaHoraComprobanteTurno(d.anuladoEn);
+          document.getElementById("comp-motivo-cancelacion").textContent =
+            d.motivoCambio ? `Motivo: ${d.motivoCambio}` : "";
+        } else if (d.estado === "reasignado" || d.estado === "modificado") {
+          const etiqueta = d.estado === "reasignado" ? "reasignado" : "modificado";
+          const aviso = document.getElementById("comp-aviso-reemplazado");
+          aviso.style.display = "block";
+          aviso.textContent = d.reemplazadoPorNumero
+            ? `Este turno fue ${etiqueta} el ${formatearFechaHoraComprobanteTurno(d.anuladoEn)}. Comprobante vigente: N.° ${d.reemplazadoPorNumero}.`
+            : `Este turno fue ${etiqueta} el ${formatearFechaHoraComprobanteTurno(d.anuladoEn)}.`;
+        }
+
+        // Si este comprobante es en sí mismo el que reemplaza a otro por una
+        // reasignación/modificación previa.
+        if (d.numeroComprobanteReemplazado) {
+          const aviso = document.getElementById("comp-aviso-corrige");
+          aviso.style.display = "block";
+          aviso.textContent = `Este comprobante reemplaza al N.° ${d.numeroComprobanteReemplazado}.`;
+        }
+
+        document.getElementById("estado-carga").style.display = "none";
+        document.getElementById("comprobante").style.display = "block";
+        document.getElementById("comp-acciones").style.display = "flex";
+
+        return true;
+      } catch (error) {
+        console.error("Error al cargar el comprobante de turno:", error);
+        document.getElementById("estado-carga").textContent =
+          "No se pudo cargar el comprobante. Cerrá esta ventana y reintentá.";
+        return false;
+      }
+    }
+
+    // Pantalla de solo lectura: cualquier usuario autenticado puede verla (los cuatro
+    // roles, Etapa T8). requireAuth revela el body al terminar el callback; recién
+    // entonces se imprime.
+    requireAuth(async (user, datosUsuario) => {
+      const params = new URLSearchParams(window.location.search);
+      const turnoId = params.get("id");
+      if (!turnoId) {
+        document.getElementById("estado-carga").textContent = "Falta el ID del turno en la URL.";
+        return;
+      }
+      const listo = await cargarComprobanteTurno(turnoId);
+      if (listo) {
+        // Se cierra sola apenas el usuario termina con el cuadro de impresión del
+        // navegador (lo imprima o lo cancele) — mismo criterio de "no dejar cosas
+        // abiertas sin necesidad" que ya usa el modal de "+ nuevo turno" en la agenda.
+        // El cuadro de impresión en sí es del sistema operativo/navegador: nadie puede
+        // cerrarlo por script, solo lo cierra la persona al elegir imprimir o cancelar
+        // — lo que sí se puede controlar es esta ventana, una vez que ese cuadro ya se
+        // cerró (evento "afterprint"). Si la pestaña no fue abierta por script (por
+        // ejemplo, reimprimir desde el historial en algunos navegadores), window.close()
+        // puede no tener efecto — ahí queda el botón "Cerrar" como respaldo.
+        window.addEventListener("afterprint", () => window.close());
+        setTimeout(() => window.print(), 300);
+      }
+    }, "../login.html");
+  </script>
+</body>
+</html>

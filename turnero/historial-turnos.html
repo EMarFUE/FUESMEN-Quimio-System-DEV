@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Historial de turnos · Turnero</title>
+  <link rel="stylesheet" href="../css/styles.css" />
+</head>
+<body style="visibility:hidden">
+  <div class="contenedor contenedor-historial">
+    <div class="encabezado-sesion">
+      <div>
+        <img src="../assets/FUESMEN-Logo.png" alt="FUESMEN" style="height: 48px; width: auto; margin-bottom: 8px;" />
+        <div class="breadcrumb"><a href="../index.html">Inicio</a> &gt; <a href="index.html">Turnero</a> &gt; Historial</div>
+        <h1 style="margin-bottom:0;">Historial de turnos</h1>
+      </div>
+      <div style="text-align:right;">
+        <div class="datos-sesion" id="datos-sesion"></div>
+        <button class="boton-secundario" style="margin-top:8px;" onclick="cerrarSesion('../login.html')">Cerrar sesión</button>
+      </div>
+    </div>
+
+    <!-- Etapa T8: ya no hay bloqueo por rol en esta pantalla (ver script al pie), pero se
+         deja el contenedor por si en el futuro hace falta mostrar algún aviso general. -->
+    <div id="mensaje-general-historial-turnos" class="mensaje-info" style="display:none;"></div>
+
+    <div id="contenido-historial-turnos" style="display:none;">
+      <div style="font-size:13px;color:var(--color-muted);margin-bottom:14px;">
+        Todos los turnos — otorgados, reasignados, modificados y cancelados. Administrador y
+        enfermería ven además el motivo y el usuario responsable de cada cambio. Desde cada
+        fila se puede reimprimir el comprobante del turno.
+      </div>
+
+      <div style="display:flex;justify-content:flex-end;margin-bottom:10px;">
+        <button type="button" id="boton-exportar-historial-turnos" class="boton-secundario" onclick="exportarHistorialTurnosAExcel()">Exportar a Excel</button>
+      </div>
+
+      <div class="filtro-tabs" id="filtro-tabs-historial-turnos">
+        <button type="button" class="filtro-tab activo" data-modo="recientes">Recientes</button>
+        <button type="button" class="filtro-tab" data-modo="tipo">Por tipo de acción</button>
+        <button type="button" class="filtro-tab" data-modo="medico">Por médico</button>
+        <button type="button" class="filtro-tab" data-modo="paciente">Por paciente</button>
+        <button type="button" class="filtro-tab" data-modo="sede">Por sede</button>
+        <button type="button" class="filtro-tab" data-modo="fecha">Por rango de fechas</button>
+      </div>
+
+      <!-- Filtro por tipo de acción -->
+      <div id="bloque-filtro-tipo" class="bloque-filtro" style="display:none;">
+        <div class="filtro-tabs" id="selector-tipo-accion-historial-turnos">
+          <button type="button" class="filtro-tab" data-tipo="activo">Otorgados</button>
+          <button type="button" class="filtro-tab" data-tipo="reasignado">Reasignados</button>
+          <button type="button" class="filtro-tab" data-tipo="modificado">Modificados</button>
+          <button type="button" class="filtro-tab" data-tipo="cancelado">Cancelados</button>
+        </div>
+      </div>
+
+      <!-- Filtro por médico -->
+      <div id="bloque-filtro-medico" class="bloque-filtro" style="display:none;">
+        <select id="campo-filtro-medico" onchange="aplicarFiltroMedicoHistorialTurnos(this.value)">
+          <option value="">Elegí un médico…</option>
+        </select>
+      </div>
+
+      <!-- Filtro por paciente: mismo patrón que medicacion/historial.js -->
+      <div id="bloque-filtro-paciente" class="bloque-filtro" style="display:none;">
+        <div id="bloque-busqueda-paciente-historial-turnos">
+          <input
+            type="text"
+            id="campo-buscar-paciente-historial-turnos"
+            class="campo-busqueda-pacientes"
+            placeholder="Buscar por apellido, nombre o documento"
+            autocomplete="off"
+            style="margin-bottom:8px;"
+          />
+          <div id="resultados-busqueda-paciente-historial-turnos"></div>
+          <div id="sin-resultados-historial-turnos" style="display:none;color:var(--color-muted);font-size:13px;">
+            No se encontraron pacientes.
+          </div>
+        </div>
+        <div id="paciente-seleccionado-historial-turnos" class="paciente-seleccionado" style="display:none;">
+          <span id="texto-paciente-seleccionado-historial-turnos"></span>
+          <button type="button" class="enlace-accion" onclick="quitarPacienteFiltroHistorialTurnos()">quitar</button>
+        </div>
+      </div>
+
+      <!-- Filtro por sede (Etapa T8) -->
+      <div id="bloque-filtro-sede" class="bloque-filtro" style="display:none;">
+        <select id="campo-filtro-sede" onchange="aplicarFiltroSedeHistorialTurnos(this.value)">
+          <option value="">Elegí una sede…</option>
+          <option value="emilio-civit">Emilio Civit</option>
+          <option value="entre-rios">Entre Ríos</option>
+        </select>
+      </div>
+
+      <!-- Filtro por rango de fechas (sobre la fecha del TURNO, no la del cambio — ver
+           comentario de turnero-historial.js). El comentario original de este bloque decía
+           lo contrario; corregido en la Etapa T11 al notar la inconsistencia con el texto
+           de abajo y con el código real de construirConsultaHistorialTurnos(). -->
+      <div id="bloque-filtro-fecha" class="bloque-filtro" style="display:none;">
+        <div class="fila-2">
+          <div class="campo" style="margin-bottom:0;">
+            <label>Desde</label>
+            <input type="date" id="campo-filtro-fecha-desde-historial-turnos" />
+          </div>
+          <div class="campo" style="margin-bottom:0;">
+            <label>Hasta</label>
+            <input type="date" id="campo-filtro-fecha-hasta-historial-turnos" />
+          </div>
+        </div>
+        <div style="font-size:12.5px;color:var(--color-muted);margin-top:6px;">Filtra por la fecha para la que está programado el turno, no por cuándo se cargó o cambió el registro.</div>
+        <button type="button" class="boton-secundario" style="margin-top:12px;" onclick="aplicarFiltroFechaHistorialTurnos()">Buscar</button>
+      </div>
+
+      <div style="overflow-x:auto;">
+        <table class="tabla">
+          <thead>
+            <tr>
+              <th>Cuándo</th>
+              <th>Acción</th>
+              <th>Turno</th>
+              <th>Paciente</th>
+              <th>Médico</th>
+              <th id="th-motivo-historial-turnos">Motivo</th>
+              <th id="th-quien-historial-turnos">Quién</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody id="cuerpo-tabla-historial-turnos">
+            <tr><td colspan="8" style="color:var(--color-muted);">Cargando...</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div id="zona-cargar-mas-historial-turnos" style="text-align:center;margin-top:8px;">
+        <button type="button" class="boton-secundario" id="boton-cargar-mas-historial-turnos" onclick="cargarMasHistorialTurnos()">Cargar más</button>
+      </div>
+
+      <!-- Etapa T11: reporte de cambios, exclusivo de administrador (punto 12 del alcance).
+           Oculto por defecto; iniciarHistorialTurnos() lo muestra solo para ese rol — ver
+           turnero-historial.js. Consulta por "anuladoEn" (cuándo ocurrió el cambio), campo
+           distinto del que usa el filtro de arriba (que consulta por "fecha", la del
+           turno) — no comparten estado ni estilo de filtro a propósito, son preguntas
+           distintas. -->
+      <div id="bloque-reporte-cambios-historial-turnos" style="display:none;margin-top:36px;padding-top:24px;border-top:1px solid var(--color-border);">
+        <div class="titulo-bloque">reporte de cambios</div>
+        <div style="font-size:13px;color:var(--color-muted);margin-bottom:14px;">
+          Cantidad de reasignaciones, modificaciones y cancelaciones en un rango de fechas,
+          agrupadas por quién hizo el cambio y por motivo — para detectar patrones de uso.
+          El rango se aplica sobre la fecha en que ocurrió el cambio, no sobre la fecha del
+          turno.
+        </div>
+
+        <div class="bloque-filtro">
+          <div class="fila-2">
+            <div class="campo" style="margin-bottom:0;">
+              <label>Desde</label>
+              <input type="date" id="campo-reporte-cambios-desde" />
+            </div>
+            <div class="campo" style="margin-bottom:0;">
+              <label>Hasta</label>
+              <input type="date" id="campo-reporte-cambios-hasta" />
+            </div>
+          </div>
+          <div style="display:flex;gap:10px;margin-top:12px;">
+            <button type="button" class="boton-secundario" id="boton-generar-reporte-cambios" onclick="generarReporteCambiosHistorialTurnos()">Generar</button>
+            <button type="button" class="boton-secundario" id="boton-exportar-reporte-cambios" onclick="exportarReporteCambiosHistorialTurnosAExcel()" disabled>Exportar a Excel</button>
+          </div>
+        </div>
+
+        <div id="resultado-reporte-cambios-historial-turnos" style="color:var(--color-muted);font-size:13px;">
+          Elegí un rango de fechas y presioná «Generar».
+        </div>
+      </div>
+    </div>
+
+    <!-- Cadena completa de un turno (original → reemplazos sucesivos) -->
+    <div id="overlay-cadena-historial-turnos" class="overlay-modal" style="display:none;" onclick="cerrarCadenaHistorialTurnosSiFondo(event)">
+      <div class="modal-panel" id="modal-panel-cadena-historial-turnos"></div>
+    </div>
+  </div>
+
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+  <script src="../js/vendor/xlsx.full.min.js"></script>
+  <script src="../js/firebase-config.js"></script>
+  <script src="../js/auth.js"></script>
+  <script src="../js/turnero-historial.js"></script>
+  <script>
+    // Etapa T8: abierto a los cuatro roles (antes, exclusivo de administrador y
+    // enfermería). iniciarHistorialTurnos() se encarga de ocultar motivo/quién para
+    // médico/administrativo — ver turnero-historial.js.
+    requireAuth((user, datosUsuario) => {
+      const rolLabel = ROLES[datosUsuario.rol] || datosUsuario.rol;
+      document.getElementById("datos-sesion").innerHTML =
+        `Hola, <strong>${escaparHtml(datosUsuario.nombre || user.email)}</strong> · rol: <strong>${rolLabel}</strong>`;
+
+      document.getElementById("contenido-historial-turnos").style.display = "block";
+      iniciarHistorialTurnos(user, datosUsuario);
+    }, "../login.html");
+  </script>
+</body>
+</html>

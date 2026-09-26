@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Otras herramientas · Servicio de quimioterapia</title>
+  <link rel="stylesheet" href="../css/styles.css" />
+</head>
+<body style="visibility:hidden">
+  <div class="contenedor">
+    <div class="encabezado-sesion">
+      <div>
+        <img src="../assets/FUESMEN-Logo.png" alt="FUESMEN" style="height: 48px; width: auto; margin-bottom: 8px;" />
+        <div class="breadcrumb"><a href="../index.html">Inicio</a> &gt; <a href="index.html">Medicación</a> &gt; Otras herramientas</div>
+        <h1 style="margin-bottom:0;">Otras herramientas</h1>
+      </div>
+      <div style="text-align:right;">
+        <div class="datos-sesion" id="datos-sesion"></div>
+        <button class="boton-secundario" style="margin-top:8px;" onclick="cerrarSesion('../login.html')">Cerrar sesión</button>
+      </div>
+    </div>
+
+    <div class="tarjetas">
+      <a class="tarjeta" href="catalogo.html">
+        <div class="tarjeta-titulo">catálogo de medicamentos</div>
+        <div class="tarjeta-texto">Alta, edición e importación de drogas y marcas.</div>
+        <div class="tarjeta-enlace">Entrar →</div>
+      </a>
+      <a class="tarjeta" href="pacientes.html">
+        <div class="tarjeta-titulo">pacientes</div>
+        <div class="tarjeta-texto">Alta, edición y búsqueda de pacientes por documento.</div>
+        <div class="tarjeta-enlace">Entrar →</div>
+      </a>
+      <a class="tarjeta" href="stock.html">
+        <div class="tarjeta-titulo">stock</div>
+        <div class="tarjeta-texto">Consultar y exportar el stock disponible por depósito.</div>
+        <div class="tarjeta-enlace">Entrar →</div>
+      </a>
+      <a class="tarjeta" href="historial.html">
+        <div class="tarjeta-titulo">historial de comprobantes</div>
+        <div class="tarjeta-texto">Buscar entregas registradas y reimprimir comprobantes.</div>
+        <div class="tarjeta-enlace">Entrar →</div>
+      </a>
+      <a class="tarjeta" href="herramienta-importar-pacientes.html" id="tarjeta-importacion" style="display:none;">
+        <div class="tarjeta-titulo">importación masiva de pacientes</div>
+        <div class="tarjeta-texto">Carga por Excel del padrón histórico, no para altas individuales.</div>
+        <div class="tarjeta-enlace">Entrar →</div>
+      </a>
+    </div>
+  </div>
+
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+  <script src="../js/firebase-config.js"></script>
+  <script src="../js/auth.js"></script>
+  <script>
+    // Escapa texto libre antes de insertarlo con innerHTML (nombre del usuario logueado).
+    // Mismo patrón ya usado en medicamentos.js desde la etapa 3.
+    function escaparHtml(texto) {
+      const div = document.createElement("div");
+      div.textContent = texto == null ? "" : String(texto);
+      return div.innerHTML;
+    }
+
+    requireAuth((user, datosUsuario) => {
+      const rolLabel = ROLES[datosUsuario.rol] || datosUsuario.rol;
+      document.getElementById("datos-sesion").innerHTML =
+        `Hola, <strong>${escaparHtml(datosUsuario.nombre || user.email)}</strong> · rol: <strong>${rolLabel}</strong>`;
+
+      if (datosUsuario.rol === "administrador" || datosUsuario.rol === "enfermeria") {
+        document.getElementById("tarjeta-importacion").style.display = "block";
+      }
+    }, "../login.html");
+  </script>
+</body>
+</html>
