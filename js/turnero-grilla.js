@@ -596,13 +596,14 @@ function renderizarTarjetaTurnoGrilla(turno, minutoApertura, sede, laneInfo) {
   // modal (abrirDetalleTurnoGrilla) y en "Ver cadena completa" del historial.
   const fueReacomodado = !!turno.reacomodo;
 
-  // Etapa 4, punto 8 — semáforo de prioridad. Visible (tooltip + borde de color) solo
-  // para médico y administrador, mismo criterio que su edición (ver
-  // actualizarPrioridadTurnoGrilla y firestore.rules). Se pinta como borde izquierdo, no
-  // como badge nuevo, para no competir por espacio con sillón/apellido/checkbox en una
-  // tarjeta que ya es chica — funciona igual en modo vertical (3+ turnos superpuestos).
+  // Etapa 4, punto 8 — semáforo de prioridad. Visible (tooltip + borde de color) para
+  // médico, enfermería y administrador (ronda de ajustes: enfermería se sumó a la
+  // visibilidad, pero NO a la edición — ver puedeEditarPrioridadDetalle más abajo y
+  // firestore.rules, que no cambian). Se pinta como borde izquierdo, no como badge
+  // nuevo, para no competir por espacio con sillón/apellido/checkbox en una tarjeta que
+  // ya es chica — funciona igual en modo vertical (3+ turnos superpuestos).
   const ETIQUETAS_PRIORIDAD_GRILLA = { rojo: "Rojo — hay que verlo obligatoriamente", amarillo: "Amarillo — trae análisis/consulta corta", verde: "Verde — pasa directo a hospital de día" };
-  const puedeVerPrioridad = rolActualGrilla === "medico" || rolActualGrilla === "administrador";
+  const puedeVerPrioridad = rolActualGrilla === "medico" || rolActualGrilla === "administrador" || rolActualGrilla === "enfermeria";
   const prioridadVisible = puedeVerPrioridad ? turno.prioridad : null;
   const clasePrioridad = prioridadVisible ? `prioridad-${prioridadVisible}-grilla` : "";
 
@@ -2310,12 +2311,13 @@ function abrirDetalleTurnoGrilla(turnoId) {
   `).join("");
 
   // Etapa 4, punto 8 — semáforo de prioridad. Visible (fila con el valor en texto) para
-  // médico y administrador, mismo criterio que el borde de color de la tarjeta; editable
-  // (select) solo para administrador o el médico dueño del turno — no hay control en la
-  // tarjeta en sí (a diferencia de "presente"), así que este modal es la única forma de
-  // cambiarla después de cargado el turno.
+  // médico, enfermería y administrador, mismo criterio que el borde de color de la
+  // tarjeta; editable (select) solo para administrador o el médico dueño del turno —
+  // enfermería la ve pero siempre en modo texto (ver el "else" de abajo), no hay
+  // control en la tarjeta en sí (a diferencia de "presente"), así que este modal es la
+  // única forma de cambiarla después de cargado el turno.
   const ETIQUETAS_PRIORIDAD_DETALLE_GRILLA = { rojo: "🔴 Rojo", amarillo: "🟡 Amarillo", verde: "🟢 Verde" };
-  const puedeVerPrioridadDetalle = rolActualGrilla === "medico" || rolActualGrilla === "administrador";
+  const puedeVerPrioridadDetalle = rolActualGrilla === "medico" || rolActualGrilla === "administrador" || rolActualGrilla === "enfermeria";
   const puedeEditarPrioridadDetalle = rolActualGrilla === "administrador" ||
     (rolActualGrilla === "medico" && !!turno.medicoId && datosUsuarioActualGrilla && turno.medicoId === datosUsuarioActualGrilla.medicoId);
   let filaPrioridadHtml = "";
@@ -2425,15 +2427,13 @@ function renderizarListaNotasGrilla() {
       : "";
     return `
       <div class="fila-nota-grilla" id="fila-nota-${nota.id}" style="padding:8px 0;border-bottom:1px solid var(--color-border);">
-        <div style="font-size:12px;color:var(--color-muted);">${escaparHtmlGrilla(nota.autorNombre || "")} · ${escaparHtmlGrilla(ETIQUETAS_ROL_NOTA_GRILLA[nota.autorRol] || nota.autorRol || "")}</div>
+        <div style="font-size:12px;color:var(--color-muted);">${escaparHtmlGrilla(nota.autorNombre || "")} · ${escaparHtmlGrilla(ROLES[nota.autorRol] || nota.autorRol || "")}</div>
         <div style="font-size:13px;white-space:pre-wrap;">${escaparHtmlGrilla(nota.texto)}</div>
         ${accionesHtml ? `<div style="margin-top:2px;">${accionesHtml}</div>` : ""}
       </div>
     `;
   }).join("");
 }
-
-const ETIQUETAS_ROL_NOTA_GRILLA = { medico: "médico", enfermeria: "enfermería", administrador: "administrador", administrativo: "administrativo" };
 
 function cerrarNotasTurnoGrilla() {
   document.getElementById("overlay-notas-turno-grilla").style.display = "none";
