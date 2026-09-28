@@ -766,7 +766,9 @@ function filaHistorialTurnos(id, d) {
     botonNotas.className = "enlace-accion";
     botonNotas.style.marginLeft = "10px";
     botonNotas.textContent = `Ver comentarios (${d.cantidadNotas})`;
-    botonNotas.addEventListener("click", () => abrirNotasHistorialTurnos(id));
+    // Los comentarios viven bajo el primer turno de la cadena (ver el bloque de comentarios
+    // de turnero-grilla.js) — notasTurnoId, si existe, dice cuál.
+    botonNotas.addEventListener("click", () => abrirNotasHistorialTurnos(d.notasTurnoId || id));
     celdaAcciones.appendChild(botonNotas);
   }
 

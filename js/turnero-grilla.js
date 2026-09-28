@@ -2216,6 +2216,18 @@ async function anularYCrearTurnoGrilla(turnoOriginal, camposNuevos, motivo, tipo
     if (!camposExcluidos.has(clave)) docNuevo[clave] = valor;
   }
   Object.assign(docNuevo, camposNuevos);
+  // Etapa 4: "presente" es de la asistencia del día original — si el turno se mueve a
+  // otro día (o se re-agenda el mismo), el nuevo arranca sin marcar. prioridad, en cambio,
+  // sigue al paciente y se copia con el resto de los campos.
+  delete docNuevo.presente;
+  // Etapa 4: los comentarios acompañan al turno (ver el bloque de comentarios más abajo).
+  // cantidadNotas ya viaja copiado con el resto de los campos; lo que hay que dejar
+  // apuntado es dónde viven las notas: la raíz de la cadena. Si el turno original ya
+  // apuntaba a una raíz, esa se hereda sola (notasTurnoId no está excluido); si no, pero
+  // tiene comentarios, el turno original ES la raíz.
+  if (!docNuevo.notasTurnoId && turnoOriginal.cantidadNotas > 0) {
+    docNuevo.notasTurnoId = turnoOriginal.id;
+  }
   docNuevo.estado = "activo";
   docNuevo.creadoPor = {
     uid: usuarioActualGrilla.uid,
@@ -2393,18 +2405,34 @@ function cerrarDetalleTurnoGrillaSiFondo(evento) {
 // contador denormalizado para que la tarjeta de la grilla sepa si mostrar el badge sin
 // tener que leer la subcolección de cada turno visible — se actualiza acá mismo, no hay
 // un proceso aparte.
+//
+// Los comentarios son del TURNO, no de cada documento que lo representa: cuando un turno
+// se modifica/reasigna/arrastra se anula y se crea uno nuevo (ver anularYCrearTurnoGrilla),
+// y los comentarios tienen que acompañarlo. Para eso los comentarios viven siempre bajo
+// el PRIMER turno de la cadena, y cada turno posterior guarda en notasTurnoId cuál es ese
+// primer turno (sin campo = el turno es su propia raíz). El contador cantidadNotas, en
+// cambio, se mantiene en el turno vigente — es el que lee la tarjeta de la grilla. Así no
+// se copia ninguna nota (copiar notas ajenas exigiría aflojar la regla "solo el autor
+// crea su nota") ni cambia quién puede hacer qué.
 
-let turnoIdNotasActualGrilla = null;
+let turnoIdNotasActualGrilla = null; // turno vigente: dueño del contador cantidadNotas
+let raizNotasActualGrilla = null;    // turno raíz de la cadena: dueño de la subcolección notas
 let notasCacheGrilla = [];
+
+function raizNotasDeTurnoGrilla(turnoId) {
+  const turno = turnosCacheGrilla.find(t => t.id === turnoId);
+  return (turno && turno.notasTurnoId) || turnoId;
+}
 
 async function abrirNotasTurnoGrilla(turnoId) {
   turnoIdNotasActualGrilla = turnoId;
+  raizNotasActualGrilla = raizNotasDeTurnoGrilla(turnoId);
   document.getElementById("overlay-notas-turno-grilla").style.display = "flex";
   document.getElementById("lista-notas-turno-grilla").innerHTML = `<p style="color:var(--color-muted);font-size:13px;">Cargando…</p>`;
   cerrarFormularioNuevaNotaGrilla();
 
   try {
-    const snapshot = await db.collection("turnos").doc(turnoId).collection("notas").orderBy("creadoEn", "asc").get();
+    const snapshot = await db.collection("turnos").doc(raizNotasActualGrilla).collection("notas").orderBy("creadoEn", "asc").get();
     notasCacheGrilla = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
     renderizarListaNotasGrilla();
   } catch (error) {
@@ -2438,6 +2466,7 @@ function renderizarListaNotasGrilla() {
 function cerrarNotasTurnoGrilla() {
   document.getElementById("overlay-notas-turno-grilla").style.display = "none";
   turnoIdNotasActualGrilla = null;
+  raizNotasActualGrilla = null;
   notasCacheGrilla = [];
 }
 
@@ -2465,7 +2494,7 @@ async function guardarNuevaNotaTurnoGrilla() {
 
   try {
     const turnoRef = db.collection("turnos").doc(turnoIdNotasActualGrilla);
-    const notaRef = turnoRef.collection("notas").doc();
+    const notaRef = db.collection("turnos").doc(raizNotasActualGrilla).collection("notas").doc();
     const batch = db.batch();
     batch.set(notaRef, {
       texto: texto.slice(0, 200),
@@ -2505,7 +2534,7 @@ async function guardarEdicionNotaGrilla(notaId) {
   if (!texto) return;
 
   try {
-    await db.collection("turnos").doc(turnoIdNotasActualGrilla).collection("notas").doc(notaId).update({ texto: texto.slice(0, 200) });
+    await db.collection("turnos").doc(raizNotasActualGrilla).collection("notas").doc(notaId).update({ texto: texto.slice(0, 200) });
     const nota = notasCacheGrilla.find(n => n.id === notaId);
     if (nota) nota.texto = texto.slice(0, 200);
     renderizarListaNotasGrilla();
@@ -2519,7 +2548,7 @@ async function borrarNotaTurnoGrilla(notaId) {
   try {
     const turnoRef = db.collection("turnos").doc(turnoIdNotasActualGrilla);
     const batch = db.batch();
-    batch.delete(turnoRef.collection("notas").doc(notaId));
+    batch.delete(db.collection("turnos").doc(raizNotasActualGrilla).collection("notas").doc(notaId));
     batch.update(turnoRef, { cantidadNotas: firebase.firestore.FieldValue.increment(-1) });
     await batch.commit();
 
