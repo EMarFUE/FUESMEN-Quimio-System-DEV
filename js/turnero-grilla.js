@@ -36,6 +36,7 @@ let sedesCacheGrilla = [];
 let turnosCacheGrilla = [];
 let sedeSeleccionadaGrilla = null; // id de la sede activa (p. ej. "emilio-civit")
 let semanaOffsetGrilla = 0; // 0 = semana actual, -1 = anterior, +1 = siguiente
+let modoVistaGrilla = "semana"; // Etapa 5, fase 2: "semana" | "dia" (la vista de día vive en turnero-dia.js)
 let medicoFiltroGrilla = null; // null = todos los médicos
 let rolActualGrilla = null;
 let usuarioActualGrilla = null;
@@ -147,18 +148,25 @@ async function iniciarAgenda(user, datosUsuario) {
   // Etapa 5: la agenda puede abrirse desde la vista mensual con sede, fecha, médico y
   // (opcionalmente) un turno cuyo detalle hay que dejar abierto. Sin parámetros, todo sigue
   // exactamente como antes.
-  const turnoIdInicial = aplicarParametrosUrlGrilla();
+  const parametrosUrl = aplicarParametrosUrlGrilla();
 
   renderizarSelectorSedeGrilla();
-  await cargarYRenderizarGrilla();
-  if (turnoIdInicial) abrirDetalleTurnoGrilla(turnoIdInicial); // si ese turno no está en la semana cargada, no hace nada
+  if (parametrosUrl.vista === "dia" && parametrosUrl.fecha) {
+    await abrirVistaDia(parametrosUrl.fecha); // Etapa 5, fase 2 (turnero-dia.js)
+  } else {
+    await cargarYRenderizarGrilla();
+  }
+  if (parametrosUrl.turnoId) abrirDetalleTurnoGrilla(parametrosUrl.turnoId); // si ese turno no está en lo cargado, no hace nada
 }
 
-// Etapa 5 — lee ?sede=&fecha=&medico=&turno= (los arma turnero-mensual.js), los aplica al
-// estado de la grilla y limpia la URL para que recargar la página no vuelva a abrir el
-// detalle. Devuelve el id del turno pedido (o null). Valores inválidos se ignoran.
+// Etapa 5 — lee ?sede=&fecha=&medico=&turno=&vista= (los arma turnero-mensual.js), los
+// aplica al estado de la grilla y limpia la URL para que recargar la página no vuelva a
+// abrir el detalle. Devuelve { turnoId, vista, fecha }: el turno pedido (o null), "dia" si
+// se pidió la vista de día (si no, null) y la fecha ya validada (o null). Valores inválidos
+// se ignoran.
 function aplicarParametrosUrlGrilla() {
-  if (!window.location.search) return null;
+  const resultado = { turnoId: null, vista: null, fecha: null };
+  if (!window.location.search) return resultado;
   const params = new URLSearchParams(window.location.search);
 
   const sede = params.get("sede");
@@ -168,6 +176,7 @@ function aplicarParametrosUrlGrilla() {
   if (fecha && /^\d{4}-\d{2}-\d{2}$/.test(fecha)) {
     const fechaPedida = fechaDesdeISO(fecha);
     if (fechaISO(fechaPedida) === fecha) {
+      resultado.fecha = fecha;
       const MS_POR_SEMANA = 7 * 24 * 60 * 60 * 1000;
       semanaOffsetGrilla = Math.round((calcularLunesGrilla(fechaPedida) - calcularLunesGrilla(new Date())) / MS_POR_SEMANA);
     }
@@ -177,9 +186,10 @@ function aplicarParametrosUrlGrilla() {
   const medico = params.get("medico");
   if (medico) medicoFiltroGrilla = medico;
 
-  const turnoId = params.get("turno");
+  resultado.turnoId = params.get("turno") || null;
+  resultado.vista = params.get("vista") === "dia" ? "dia" : null;
   window.history.replaceState(null, "", window.location.pathname);
-  return turnoId || null;
+  return resultado;
 }
 
 // Etapa 5 — enlace a la vista mensual (agenda-mensual.html) conservando sede y filtro de
@@ -232,7 +242,9 @@ async function cambiarSedeGrilla(sedeId) {
   sedeSeleccionadaGrilla = sedeId;
   medicoFiltroGrilla = null; // el listado de médicos cambia con la sede
   renderizarSelectorSedeGrilla();
-  await cargarYRenderizarGrilla();
+  // En modo día la sede nueva necesita también su mes (marcas del calendario): carga completa.
+  if (modoVistaGrilla === "dia") await cargarDiaCompletoDia(fechaSeleccionadaDia);
+  else await cargarYRenderizarGrilla();
 }
 
 async function cambiarSemanaGrilla(delta) {
@@ -265,6 +277,7 @@ function poblarFiltroMedicoGrilla() {
 
 function cambiarFiltroMedicoGrilla(valor) {
   medicoFiltroGrilla = valor || null;
+  if (modoVistaGrilla === "dia") { renderizarDia(); return; } // Etapa 5, fase 2
   renderizarGrilla(); // ya está todo en caché, no hace falta volver a consultar Firestore
 }
 
@@ -423,6 +436,11 @@ async function cargarTurnosGrilla() {
 }
 
 async function cargarYRenderizarGrilla() {
+  // Etapa 5, fase 2: en modo día, todo lo que terminaba acá (presente, prioridad,
+  // comentarios, guardar/reasignar/modificar/eliminar, cerrar el modal de nuevo turno)
+  // relee solamente el día visible — no las dos semanas.
+  if (modoVistaGrilla === "dia") { await cargarYRenderizarDia(); return; }
+
   const contenedor = document.getElementById("grilla-contenedor");
   contenedor.innerHTML = `<p style="color:var(--color-muted);padding:20px;">Cargando...</p>`;
 
@@ -582,7 +600,8 @@ function renderizarGrilla() {
 
     return `
       <div class="columna-dia-grilla">
-        <div class="encabezado-dia-grilla ${fechaDiaISO === hoyISO ? "hoy" : ""}">
+        <div class="encabezado-dia-grilla enlace-dia-grilla ${fechaDiaISO === hoyISO ? "hoy" : ""}"
+          title="Ver la agenda de este día" onclick="abrirVistaDia('${fechaDiaISO}')">
           ${DIAS_LABEL_GRILLA[DIAS_SEMANA_GRILLA[indice]]}
           <span class="fecha-dia-grilla">${String(dia.getDate()).padStart(2, "0")}/${String(dia.getMonth() + 1).padStart(2, "0")}</span>
         </div>

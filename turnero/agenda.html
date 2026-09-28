@@ -22,12 +22,25 @@
       <button type="button" id="boton-consultar-disponibilidad-grilla" class="boton-secundario" style="display:none;width:auto;"
         onclick="abrirConsultaDisponibilidadGrilla()">Consultar disponibilidad</button>
       <div class="navegacion-semana-grilla">
-        <button type="button" onclick="cambiarSemanaGrilla(-1)">‹ Semana anterior</button>
-        <span class="etiqueta-semana-grilla" id="etiqueta-semana-grilla"></span>
-        <button type="button" onclick="irASemanaActualGrilla()">Hoy</button>
-        <button type="button" onclick="cambiarSemanaGrilla(1)">Semana siguiente ›</button>
-        <!-- Etapa 5: vista mensual (pantalla aparte, solo consulta). -->
-        <button type="button" onclick="irAMesGrilla()">Ver mes</button>
+        <!-- Etapa 5, fase 2: dos grupos de botones que se alternan según el modo (semana | día).
+             display:contents los deja como hijos directos del flex, igual que antes. -->
+        <span id="nav-semana-botones" style="display:contents;">
+          <button type="button" onclick="cambiarSemanaGrilla(-1)">‹ Semana anterior</button>
+          <span class="etiqueta-semana-grilla" id="etiqueta-semana-grilla"></span>
+          <button type="button" onclick="irASemanaActualGrilla()">Hoy</button>
+          <button type="button" onclick="cambiarSemanaGrilla(1)">Semana siguiente ›</button>
+          <!-- Etapa 5: vista mensual (pantalla aparte, solo consulta). -->
+          <button type="button" onclick="irAMesGrilla()">Ver mes</button>
+        </span>
+        <span id="nav-dia-botones" style="display:none;">
+          <button type="button" onclick="cambiarDiaDia(-1)">‹ Día anterior</button>
+          <span class="etiqueta-semana-grilla etiqueta-dia-grilla" id="etiqueta-dia-grilla"></span>
+          <button type="button" onclick="irAHoyDia()">Hoy</button>
+          <button type="button" onclick="cambiarDiaDia(1)">Día siguiente ›</button>
+          <button type="button" onclick="actualizarDiaDia()" title="Volver a leer este día">Actualizar</button>
+          <button type="button" onclick="irASemanaDesdeDiaDia()">Ver semana</button>
+          <button type="button" onclick="irAMesDesdeDiaDia()">Ver mes</button>
+        </span>
         <div class="menu-cuenta-grilla">
           <button type="button" class="boton-menu-cuenta-grilla" onclick="alternarMenuCuentaGrilla(event)" title="Cuenta">☰</button>
           <div class="panel-menu-cuenta-grilla" id="panel-menu-cuenta-grilla" style="display:none;">
@@ -43,6 +56,13 @@
       <div id="grilla-contenedor">
         <p style="color:var(--color-muted);padding:20px;">Cargando...</p>
       </div>
+    </div>
+
+    <!-- Etapa 5, fase 2: vista de día (ver turnero-dia.js). Mini calendario a la izquierda,
+         lista de turnos del día a la derecha. Los modales de abajo son los mismos de la semana. -->
+    <div id="vista-dia" class="layout-dia" style="display:none;">
+      <aside id="calendario-dia" class="calendario-dia"></aside>
+      <section id="panel-dia" class="panel-dia"></section>
     </div>
   </div>
 
@@ -429,6 +449,7 @@
   <script src="../js/turnero-motor.js"></script>
   <script src="../js/turnero-carga.js"></script>
   <script src="../js/turnero-grilla.js"></script>
+  <script src="../js/turnero-dia.js"></script>
   <script>
     requireAuth(async (user, datosUsuario) => {
       const rolLabel = ROLES[datosUsuario.rol] || datosUsuario.rol;

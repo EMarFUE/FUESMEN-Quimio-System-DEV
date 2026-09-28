@@ -3,7 +3,8 @@
 // Pantalla de SOLO CONSULTA (decisión con Elías): no arrastra ni edita turnos. Cada día
 // muestra la cantidad de turnos y una línea "hora + apellido" por turno; clic en el turno
 // abre un detalle de solo lectura, y de ahí un botón lleva a la semana de ese turno
-// (agenda.html) para editar, comentar o reimprimir. Prioridad, presente y comentarios NO
+// (agenda.html) para editar, comentar o reimprimir. El número de cada día abre la vista de
+// día (agenda.html con ?vista=dia). Prioridad, presente y comentarios NO
 // se dibujan en la línea: se ven en el tooltip y en el detalle.
 //
 // Carga de datos (diseñada para no releer de más):
@@ -115,6 +116,11 @@ function urlAgendaSemanaMensual(fechaISOTexto, turnoId) {
   params.set("fecha", fechaISOTexto);
   if (turnoId) params.set("turno", turnoId);
   return `agenda.html?${params.toString()}`;
+}
+
+// Etapa 5, fase 2: enlace a la vista de día de la agenda (agenda.html en modo "Día").
+function urlAgendaDiaMensual(fechaISOTexto) {
+  return `${urlAgendaSemanaMensual(fechaISOTexto, null)}&vista=dia`;
 }
 
 // --- Inicio de la pantalla ---
@@ -348,10 +354,10 @@ function renderizarDiaMensual(fecha, turnosPorFecha, sede, hoyISO) {
     return apellidoMostradoMensual(a).localeCompare(apellidoMostradoMensual(b), "es");
   });
 
-  // Fase 2: este encabezado pasará a abrir la vista de día en vez de la semana.
+  // Etapa 5, fase 2: el número del día abre la vista de día (antes abría la semana).
   return `
     <div class="dia-mensual ${fechaTexto === hoyISO ? "hoy" : ""}" data-fecha="${fechaTexto}">
-      <a class="encabezado-dia-mensual" href="${escaparHtmlMensual(urlAgendaSemanaMensual(fechaTexto, null))}" title="Ver la semana de este día">
+      <a class="encabezado-dia-mensual" href="${escaparHtmlMensual(urlAgendaDiaMensual(fechaTexto))}" title="Ver la agenda de este día">
         <span>${fecha.getDate()}</span>
         ${turnosDelDia.length > 0 ? `<span class="cantidad-dia-mensual" title="${turnosDelDia.length} ${turnosDelDia.length === 1 ? "turno" : "turnos"}">${turnosDelDia.length}</span>` : ""}
       </a>
