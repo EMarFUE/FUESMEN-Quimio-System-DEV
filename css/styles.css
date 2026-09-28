@@ -1564,3 +1564,153 @@ h1 {
   border-radius: 999px;
   padding: 1px 8px;
 }
+
+/* Etapa 5, fase 1: vista mensual de la agenda (turnero/agenda-mensual.html). Reutiliza la
+   barra de controles, el selector de sede, el menú de cuenta y el modal de detalle de la
+   agenda semanal; acá solo va lo propio de la grilla del mes. Seis columnas (lunes a
+   sábado, como la semana); cada fila es una semana y toma la altura de su día más cargado. */
+.etiqueta-mes-mensual {
+  font-weight: 600;
+  min-width: 150px;
+  text-align: center;
+}
+
+.leyenda-lectura-mensual {
+  font-size: 12px;
+  color: var(--color-muted);
+  margin: -2px 2px 6px;
+}
+
+.grilla-scroll-mensual {
+  overflow-x: auto;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  background: var(--color-surface);
+}
+
+.grilla-mensual {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(150px, 1fr));
+  min-width: 900px;
+}
+
+.encabezado-columna-mensual {
+  background: var(--color-bg);
+  border-right: 1px solid var(--color-border);
+  border-bottom: 1px solid var(--color-border);
+  padding: 8px 4px;
+  font-size: 12.5px;
+  font-weight: 600;
+  text-align: center;
+}
+
+.dia-mensual {
+  min-width: 0; /* deja que los apellidos largos se recorten con "…" en vez de ensanchar la columna */
+  min-height: 84px;
+  padding: 4px;
+  border-right: 1px solid var(--color-border);
+  border-bottom: 1px solid var(--color-border);
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+/* Última columna de cada fila (encabezados y días comparten la misma grilla de 6). */
+.encabezado-columna-mensual:nth-child(6n),
+.dia-mensual:nth-child(6n) {
+  border-right: none;
+}
+
+.dia-mensual.fuera {
+  background: var(--color-bg);
+}
+
+.encabezado-dia-mensual {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 2px 4px;
+  border-radius: 6px;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--color-text);
+  text-decoration: none;
+}
+
+.encabezado-dia-mensual:hover {
+  background: var(--color-bg);
+}
+
+.dia-mensual.hoy .encabezado-dia-mensual {
+  background: var(--color-accent-soft);
+  color: #1c5c7a;
+}
+
+.cantidad-dia-mensual {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--color-muted);
+  background: var(--color-bg);
+  border-radius: 999px;
+  padding: 1px 7px;
+}
+
+.lista-turnos-mensual {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.turno-mensual {
+  display: flex;
+  align-items: baseline;
+  gap: 5px;
+  width: 100%;
+  min-width: 0;
+  text-align: left;
+  background: var(--color-accent-soft);
+  border: 1px solid var(--color-accent);
+  border-radius: 5px;
+  padding: 1px 5px;
+  font-family: var(--font);
+  font-size: 11.5px;
+  line-height: 1.35;
+  color: var(--color-text);
+  cursor: pointer;
+}
+
+.turno-mensual:hover {
+  border-color: #1c5c7a;
+}
+
+.hora-turno-mensual {
+  flex-shrink: 0;
+  color: var(--color-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.apellido-turno-mensual {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 600;
+}
+
+/* Bloqueo de todos los sillones (día completo o franja): misma trama que la banda de la
+   agenda semanal, en formato de etiqueta. */
+.marca-bloqueo-mensual {
+  align-self: flex-start;
+  padding: 1px 8px;
+  border: 1px dashed #9a978b;
+  border-radius: 999px;
+  background-image: repeating-linear-gradient(135deg, rgba(91, 100, 112, 0.05) 0, rgba(91, 100, 112, 0.05) 6px, rgba(91, 100, 112, 0.12) 6px, rgba(91, 100, 112, 0.12) 12px);
+  font-size: 10.5px;
+  font-weight: 600;
+  color: var(--color-muted);
+  cursor: help;
+}
+
+.navegacion-semana-grilla.navegacion-mensual {
+  flex-wrap: wrap;
+}

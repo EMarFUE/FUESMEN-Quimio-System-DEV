@@ -144,8 +144,57 @@ async function iniciarAgenda(user, datosUsuario) {
     ? "entre-rios"
     : sedesCacheGrilla[0].id;
 
+  // Etapa 5: la agenda puede abrirse desde la vista mensual con sede, fecha, médico y
+  // (opcionalmente) un turno cuyo detalle hay que dejar abierto. Sin parámetros, todo sigue
+  // exactamente como antes.
+  const turnoIdInicial = aplicarParametrosUrlGrilla();
+
   renderizarSelectorSedeGrilla();
   await cargarYRenderizarGrilla();
+  if (turnoIdInicial) abrirDetalleTurnoGrilla(turnoIdInicial); // si ese turno no está en la semana cargada, no hace nada
+}
+
+// Etapa 5 — lee ?sede=&fecha=&medico=&turno= (los arma turnero-mensual.js), los aplica al
+// estado de la grilla y limpia la URL para que recargar la página no vuelva a abrir el
+// detalle. Devuelve el id del turno pedido (o null). Valores inválidos se ignoran.
+function aplicarParametrosUrlGrilla() {
+  if (!window.location.search) return null;
+  const params = new URLSearchParams(window.location.search);
+
+  const sede = params.get("sede");
+  if (sede && sedesCacheGrilla.some(s => s.id === sede)) sedeSeleccionadaGrilla = sede;
+
+  const fecha = params.get("fecha");
+  if (fecha && /^\d{4}-\d{2}-\d{2}$/.test(fecha)) {
+    const fechaPedida = fechaDesdeISO(fecha);
+    if (fechaISO(fechaPedida) === fecha) {
+      const MS_POR_SEMANA = 7 * 24 * 60 * 60 * 1000;
+      semanaOffsetGrilla = Math.round((calcularLunesGrilla(fechaPedida) - calcularLunesGrilla(new Date())) / MS_POR_SEMANA);
+    }
+  }
+
+  // Si el médico no atiende en esa sede/semana, poblarFiltroMedicoGrilla() lo vuelve a "Todos".
+  const medico = params.get("medico");
+  if (medico) medicoFiltroGrilla = medico;
+
+  const turnoId = params.get("turno");
+  window.history.replaceState(null, "", window.location.pathname);
+  return turnoId || null;
+}
+
+// Etapa 5 — enlace a la vista mensual (agenda-mensual.html) conservando sede y filtro de
+// médico. El mes que se abre es el del jueves de la semana visible, así una semana que
+// cruza dos meses cae en el que tiene la mayoría de sus días.
+function urlVistaMensualGrilla() {
+  const params = new URLSearchParams();
+  params.set("sede", sedeSeleccionadaGrilla);
+  if (medicoFiltroGrilla) params.set("medico", medicoFiltroGrilla);
+  params.set("fecha", fechaISO(obtenerDiasVisiblesGrilla()[3]));
+  return `agenda-mensual.html?${params.toString()}`;
+}
+
+function irAMesGrilla() {
+  window.location.href = urlVistaMensualGrilla();
 }
 
 async function cargarSedesGrilla() {
