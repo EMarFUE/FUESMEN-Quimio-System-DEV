@@ -12,19 +12,29 @@
        a agenda.html (semana de ese turno, con el detalle ya abierto). Reutiliza el motor
        únicamente por sus funciones puras de fecha/bloqueo; no carga turnero-carga.js ni
        turnero-grilla.js. -->
-  <div class="contenedor-ancho">
-    <div class="barra-controles-grilla">
-      <div id="selector-sede-mensual" class="selector-sede-grilla"></div>
-      <select id="filtro-medico-mensual" class="filtro-medico-grilla" onchange="cambiarFiltroMedicoMensual(this.value)">
-        <option value="">Todos los médicos</option>
-      </select>
-      <div class="navegacion-semana-grilla navegacion-mensual">
-        <button type="button" onclick="cambiarMesMensual(-1)">‹ Mes anterior</button>
-        <span class="etiqueta-mes-mensual" id="etiqueta-mes-mensual"></span>
-        <button type="button" onclick="irAMesActualMensual()">Hoy</button>
-        <button type="button" onclick="cambiarMesMensual(1)">Mes siguiente ›</button>
-        <button type="button" id="boton-actualizar-mensual" onclick="actualizarMesMensual()" title="Volver a leer este mes desde la base">Actualizar</button>
-        <button type="button" onclick="irASemanaDesdeMesMensual()">Ver semana</button>
+  <div class="contenedor-ancho pantalla-grilla">
+    <div class="barra-controles-grilla sin-acciones">
+      <div class="zona-filtros-barra">
+        <div id="selector-sede-mensual" class="selector-sede-grilla"></div>
+        <select id="filtro-medico-mensual" class="filtro-medico-grilla" onchange="cambiarFiltroMedicoMensual(this.value)">
+          <option value="">Todos los médicos</option>
+        </select>
+      </div>
+      <div class="zona-navegacion-barra">
+        <div class="selector-vista-grilla" role="group" aria-label="Vista de la agenda">
+          <button type="button" onclick="irADiaDesdeMesMensual()" title="Ver la agenda de un día">Día</button>
+          <button type="button" onclick="irASemanaDesdeMesMensual()" title="Ver la semana">Semana</button>
+          <button type="button" class="activo" aria-pressed="true">Mes</button>
+        </div>
+        <div class="navegador-fechas-grilla">
+          <button type="button" class="boton-nav-grilla icono" onclick="cambiarMesMensual(-1)" title="Mes anterior" aria-label="Mes anterior">‹</button>
+          <span class="etiqueta-mes-mensual"><span id="etiqueta-mes-mensual"></span> <span class="conteo-nav-grilla" id="conteo-mes-mensual"></span></span>
+          <button type="button" class="boton-nav-grilla icono" onclick="cambiarMesMensual(1)" title="Mes siguiente" aria-label="Mes siguiente">›</button>
+          <button type="button" class="boton-nav-grilla" onclick="irAMesActualMensual()" title="Ir al mes actual">Hoy</button>
+          <button type="button" class="boton-nav-grilla icono" id="boton-actualizar-mensual" onclick="actualizarMesMensual()" title="Volver a leer este mes desde la base" aria-label="Actualizar este mes">↻</button>
+        </div>
+      </div>
+      <div class="zona-menu-barra">
         <div class="menu-cuenta-grilla">
           <button type="button" class="boton-menu-cuenta-grilla" onclick="alternarMenuCuentaMensual(event)" title="Cuenta">☰</button>
           <div class="panel-menu-cuenta-grilla" id="panel-menu-cuenta-mensual" style="display:none;">
@@ -35,7 +45,6 @@
         </div>
       </div>
     </div>
-    <div class="leyenda-lectura-mensual" id="leyenda-lectura-mensual"></div>
 
     <div class="grilla-scroll-mensual">
       <div id="grilla-mensual-contenedor">

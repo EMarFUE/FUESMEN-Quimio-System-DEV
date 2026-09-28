@@ -215,6 +215,19 @@ function irASemanaDesdeMesMensual() {
   window.location.href = urlAgendaSemanaMensual(fechaISO(fecha), null);
 }
 
+// Etapa 5 — botón "Día" del selector de vista: abre hoy si el mes visible es el actual, o el
+// día 1 del mes visible (agenda.html lo lleva al lunes si cae domingo).
+function urlDiaDesdeMesMensual() {
+  const hoy = new Date();
+  const esMesActual = hoy.getFullYear() === anioVisibleMensual && hoy.getMonth() === mesVisibleMensual;
+  const fecha = esMesActual ? hoy : new Date(anioVisibleMensual, mesVisibleMensual, 1);
+  return urlAgendaDiaMensual(fechaISO(fecha));
+}
+
+function irADiaDesdeMesMensual() {
+  window.location.href = urlDiaDesdeMesMensual();
+}
+
 // --- Carga de turnos del mes (con caché en memoria por sede + mes) ---
 
 async function obtenerMesMensual(forzar) {
@@ -393,11 +406,15 @@ function renderizarMensual() {
   document.getElementById("grilla-mensual-contenedor").innerHTML =
     `<div class="grilla-mensual">${encabezadosHtml}${diasHtml}</div>`;
 
+  // La cantidad de turnos va junto al título del mes; la hora de lectura, en el tooltip del ↻
+  // (antes ocupaban una línea propia debajo de la barra).
   const hora = leidoEnMesMensual
     ? `${String(leidoEnMesMensual.getHours()).padStart(2, "0")}:${String(leidoEnMesMensual.getMinutes()).padStart(2, "0")}`
     : "-";
-  document.getElementById("leyenda-lectura-mensual").textContent =
-    `${turnosVisibles.length} ${turnosVisibles.length === 1 ? "turno" : "turnos"} en el mes · datos leídos a las ${hora}`;
+  document.getElementById("conteo-mes-mensual").textContent =
+    `· ${turnosVisibles.length} ${turnosVisibles.length === 1 ? "turno" : "turnos"}`;
+  document.getElementById("boton-actualizar-mensual").title =
+    `Datos leídos a las ${hora}. Clic para volver a leer este mes desde la base`;
 }
 
 // --- Detalle de solo lectura ---

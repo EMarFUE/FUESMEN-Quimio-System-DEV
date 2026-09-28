@@ -15,6 +15,9 @@
      --color-accent-secondary (ya usados en todo el sistema para "mal"/"bien"); el
      amarillo no tenía equivalente en la paleta existente. */
   --color-prioridad-amarilla: #d8a930;
+  /* Etapa 5: botón "+ Nuevo turno" — azul más profundo que --color-accent (blanco sobre
+     --color-accent no llega a un contraste legible) para que sea la acción que más resalta. */
+  --color-accion-principal: #1f78a8;
   --radius: 10px;
   --font: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
 }
@@ -1038,13 +1041,69 @@ h1 {
   padding: 8px 12px 12px;
 }
 
+/* Barra superior de la agenda semanal y de la vista mensual (Etapa 5): tres zonas fijas —
+   filtros a la izquierda (sede, médico), navegación en el centro (selector de vista +
+   fechas) y acciones a la derecha (+ Nuevo turno, Disponibilidad) — y el menú ☰ al final.
+   Todos los controles miden 32 px de alto, salvo "+ Nuevo turno" (38 px, color propio) para
+   que sea lo que más resalte. En pantallas angostas pasa a dos filas fijas: navegación +
+   menú arriba, filtros + acciones abajo (no se parte al azar). */
 .barra-controles-grilla {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto auto;
+  grid-template-areas: "filtros navegacion acciones menu";
+  align-items: center;
+  gap: 8px 16px;
+  margin-bottom: 8px;
+}
+
+.barra-controles-grilla.sin-acciones {
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  grid-template-areas: "filtros navegacion menu";
+}
+
+.zona-filtros-barra {
+  grid-area: filtros;
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  gap: 8px;
   flex-wrap: wrap;
-  gap: 10px;
-  margin-bottom: 8px;
+}
+
+.zona-navegacion-barra {
+  grid-area: navegacion;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.zona-acciones-barra {
+  grid-area: acciones;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.zona-menu-barra {
+  grid-area: menu;
+}
+
+@media (max-width: 1180px) {
+  .barra-controles-grilla,
+  .barra-controles-grilla.sin-acciones {
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-areas: "navegacion menu" "filtros acciones";
+  }
+  .barra-controles-grilla.sin-acciones {
+    grid-template-areas: "navegacion menu" "filtros filtros";
+  }
+  .zona-navegacion-barra {
+    justify-content: flex-start;
+  }
+  .zona-acciones-barra {
+    justify-self: end;
+  }
 }
 
 .selector-sede-grilla {
@@ -1074,6 +1133,37 @@ h1 {
   font-weight: 600;
 }
 
+/* En la barra, las sedes son un solo control segmentado (botones unidos). En la lateral de
+   la vista de día, donde se mueve el mismo elemento, quedan como botones sueltos. */
+.zona-filtros-barra .selector-sede-grilla {
+  gap: 0;
+}
+
+.zona-filtros-barra .boton-sede-grilla {
+  height: 32px;
+  padding: 0 14px;
+  border-radius: 0;
+  margin-left: -1px;
+}
+
+.zona-filtros-barra .boton-sede-grilla:first-child {
+  border-radius: var(--radius) 0 0 var(--radius);
+  margin-left: 0;
+}
+
+.zona-filtros-barra .boton-sede-grilla:last-child {
+  border-radius: 0 var(--radius) var(--radius) 0;
+}
+
+.zona-filtros-barra .boton-sede-grilla:only-child {
+  border-radius: var(--radius);
+}
+
+.zona-filtros-barra .boton-sede-grilla.activo {
+  position: relative;
+  z-index: 1;
+}
+
 .filtro-medico-grilla {
   border: 1px solid var(--color-border);
   border-radius: var(--radius);
@@ -1084,31 +1174,141 @@ h1 {
   background: var(--color-surface);
 }
 
-.navegacion-semana-grilla {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  font-size: 13.5px;
+.zona-filtros-barra .filtro-medico-grilla {
+  height: 32px;
+  padding: 0 10px;
+  max-width: 200px;
 }
 
-.navegacion-semana-grilla button {
+/* Selector de vista [Día | Semana | Mes]: mismo control en semana, mes y día. */
+.selector-vista-grilla {
+  display: inline-flex;
+}
+
+.selector-vista-grilla button {
+  height: 32px;
+  padding: 0 14px;
+  margin-left: -1px;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: 0;
+  font-family: var(--font);
+  font-size: 13px;
+  color: var(--color-text);
+  cursor: pointer;
+}
+
+.selector-vista-grilla button:first-child {
+  border-radius: var(--radius) 0 0 var(--radius);
+  margin-left: 0;
+}
+
+.selector-vista-grilla button:last-child {
+  border-radius: 0 var(--radius) var(--radius) 0;
+}
+
+.selector-vista-grilla button:hover:not(.activo) {
+  background: var(--color-bg);
+}
+
+.selector-vista-grilla button.activo {
+  position: relative;
+  z-index: 1;
+  background: var(--color-accent-soft);
+  border-color: var(--color-accent);
+  color: #1c5c7a;
+  font-weight: 600;
+  cursor: default;
+}
+
+/* Navegación de fechas: ‹ rango › + Hoy (+ ↻ en mes y día). */
+.navegador-fechas-grilla {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.boton-nav-grilla {
+  height: 32px;
+  min-width: 32px;
+  padding: 0 12px;
   background: transparent;
   border: 1px solid var(--color-border);
   border-radius: var(--radius);
-  padding: 5px 10px;
-  cursor: pointer;
   font-family: var(--font);
+  font-size: 13px;
   color: var(--color-text);
+  cursor: pointer;
 }
 
-.navegacion-semana-grilla button:hover {
+.boton-nav-grilla.icono {
+  width: 32px;
+  padding: 0;
+  font-size: 18px;
+  line-height: 1;
+}
+
+.boton-nav-grilla:hover {
   background: var(--color-bg);
 }
 
 .etiqueta-semana-grilla {
   font-weight: 600;
-  min-width: 210px;
+  font-size: 14px;
+  min-width: 170px;
   text-align: center;
+  white-space: nowrap;
+}
+
+.conteo-nav-grilla {
+  font-weight: 400;
+  font-size: 12.5px;
+  color: var(--color-muted);
+}
+
+/* Acciones: "+ Nuevo turno" es la que más presencia tiene (más alta, color propio, sombra
+   suave); "Disponibilidad" es secundaria, con la misma altura que el resto de la barra. */
+.boton-nuevo-turno-barra {
+  width: auto;
+  height: 38px;
+  padding: 0 22px;
+  background: var(--color-accion-principal);
+  font-size: 14.5px;
+  font-weight: 700;
+  white-space: nowrap;
+  box-shadow: 0 1px 4px rgba(31, 120, 168, 0.4);
+}
+
+.boton-nuevo-turno-barra:hover {
+  background: #1a6690;
+  opacity: 1;
+}
+
+.boton-disponibilidad-barra {
+  height: 32px;
+  padding: 0 14px;
+  white-space: nowrap;
+}
+
+/* Pantallas de grilla (semana y mes): la pantalla mide el alto de la ventana, la barra
+   ocupa lo que necesite y la grilla se queda con el resto y scrollea por dentro. Así no hay
+   doble scroll ni un alto "de memoria" que dependa de cuánto mida la barra. */
+.contenedor-ancho.pantalla-grilla {
+  height: 100vh;
+  height: 100dvh;
+  display: flex;
+  flex-direction: column;
+}
+
+.pantalla-grilla > * {
+  flex: none;
+}
+
+.pantalla-grilla > .grilla-scroll-grilla,
+.pantalla-grilla > .grilla-scroll-mensual {
+  flex: 1 1 auto;
+  min-height: 0;
+  max-height: none;
 }
 
 /* Menú de cuenta: imperceptible hasta que se abre — solo un botón chico de
@@ -1483,10 +1683,6 @@ h1 {
   .contenedor-ancho {
     padding: 12px 12px 20px;
   }
-  .barra-controles-grilla {
-    flex-direction: column;
-    align-items: flex-start;
-  }
 }
 
 /* Historial con filtros en pestañas + tabla ancha (Turnero T8, ajuste post-entrega;
@@ -1571,18 +1767,14 @@ h1 {
    sábado, como la semana); cada fila es una semana y toma la altura de su día más cargado. */
 .etiqueta-mes-mensual {
   font-weight: 600;
-  min-width: 150px;
+  font-size: 14px;
+  min-width: 190px;
   text-align: center;
-}
-
-.leyenda-lectura-mensual {
-  font-size: 12px;
-  color: var(--color-muted);
-  margin: -2px 2px 6px;
+  white-space: nowrap;
 }
 
 .grilla-scroll-mensual {
-  overflow-x: auto;
+  overflow: auto;
   border: 1px solid var(--color-border);
   border-radius: var(--radius);
   background: var(--color-surface);
@@ -1595,6 +1787,9 @@ h1 {
 }
 
 .encabezado-columna-mensual {
+  position: sticky;
+  top: 0;
+  z-index: 1;
   background: var(--color-bg);
   border-right: 1px solid var(--color-border);
   border-bottom: 1px solid var(--color-border);
@@ -1709,10 +1904,6 @@ h1 {
   font-weight: 600;
   color: var(--color-muted);
   cursor: help;
-}
-
-.navegacion-semana-grilla.navegacion-mensual {
-  flex-wrap: wrap;
 }
 
 /* Etapa 5, fase 2: vista de día de la agenda (turnero-dia.js). Lateral angosta a la
@@ -1886,25 +2077,13 @@ h1 {
   margin: 0;
 }
 
-.separador-lateral-dia {
-  border-top: 1px solid var(--color-border);
+.controles-lateral-dia .selector-vista-grilla {
+  display: flex;
 }
 
-.boton-lateral-dia {
-  width: 100%;
-  background: transparent;
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius);
-  padding: 6px 10px;
-  font-family: var(--font);
-  font-size: 13px;
-  color: var(--color-text);
-  cursor: pointer;
-  text-align: left;
-}
-
-.boton-lateral-dia:hover {
-  background: var(--color-bg);
+.controles-lateral-dia .selector-vista-grilla button {
+  flex: 1;
+  padding: 0;
 }
 
 .columna-principal-dia {
@@ -1967,6 +2146,12 @@ h1 {
 
 .navegacion-dia-cabecera button:hover {
   background: var(--color-bg);
+}
+
+.navegacion-dia-cabecera button.icono {
+  min-width: 32px;
+  width: 32px;
+  padding: 0;
 }
 
 .slot-menu-cuenta-dia {

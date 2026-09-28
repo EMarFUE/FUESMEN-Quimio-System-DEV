@@ -3,8 +3,8 @@
 // Qué es: una lista por hora con TODOS los turnos de un día (una fila por turno, sin dibujar
 // la duración) y, a la izquierda, una lateral angosta con un mini calendario solo de
 // navegación y, debajo, los controles que en semana/mes están en la barra de arriba (sede,
-// médico, "+ Nuevo turno", "Consultar disponibilidad", Actualizar, Ver semana, Ver mes).
-// Arriba de la lista van la fecha grande, ‹ › / Hoy y el menú ☰. Cada fila lleva lo mismo
+// médico, "+ Nuevo turno", "Disponibilidad" y el selector de vista Día | Semana | Mes).
+// Arriba de la lista van la fecha grande, ‹ Hoy › ↻ y el menú ☰. Cada fila lleva lo mismo
 // que la tarjeta semanal (checkbox de presente, borde/etiqueta de prioridad, color de
 // presente, badge 💬, ↻ de reacomodo) más horario completo, nombre completo, médico y
 // ciclo/sesión. No hay arrastre: cambiar un turno se hace con Reasignar / Modificar /
@@ -193,8 +193,10 @@ function moverControlesDia(haciaLateral) {
 function mostrarModoDia(activo) {
   modoVistaGrilla = activo ? "dia" : "semana";
   moverControlesDia(activo);
-  // Con todos sus controles movidos, la barra superior queda vacía: se oculta entera.
+  // Con todos sus controles movidos, la barra superior queda vacía: se oculta entera. La
+  // pantalla de día scrollea con la página (la de semana/mes, por dentro; ver .pantalla-grilla).
   document.querySelector(".barra-controles-grilla").style.display = activo ? "none" : "";
+  document.querySelector(".contenedor-ancho").classList.toggle("pantalla-grilla", !activo);
   document.querySelector(".grilla-scroll-grilla").style.display = activo ? "none" : "";
   document.getElementById("vista-dia").style.display = activo ? "grid" : "none";
 }

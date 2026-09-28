@@ -110,6 +110,22 @@ function formatearRangoSemanaGrilla(dias) {
   return `${primero.getDate()} de ${MESES_LABEL_GRILLA[primero.getMonth()]} al ${ultimo.getDate()} de ${MESES_LABEL_GRILLA[ultimo.getMonth()]} de ${ultimo.getFullYear()}`;
 }
 
+// Etapa 5 — versión corta del rango para la barra: "28 sep – 3 oct 2026", "21 – 26 sep 2026"
+// (el rango largo de arriba queda como tooltip).
+const MESES_CORTOS_GRILLA = ["ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "sep", "oct", "nov", "dic"];
+
+function formatearRangoCortoSemanaGrilla(dias) {
+  const primero = dias[0];
+  const ultimo = dias[dias.length - 1];
+  if (primero.getFullYear() !== ultimo.getFullYear()) {
+    return `${primero.getDate()} ${MESES_CORTOS_GRILLA[primero.getMonth()]} ${primero.getFullYear()} – ${ultimo.getDate()} ${MESES_CORTOS_GRILLA[ultimo.getMonth()]} ${ultimo.getFullYear()}`;
+  }
+  if (primero.getMonth() === ultimo.getMonth()) {
+    return `${primero.getDate()} – ${ultimo.getDate()} ${MESES_CORTOS_GRILLA[primero.getMonth()]} ${primero.getFullYear()}`;
+  }
+  return `${primero.getDate()} ${MESES_CORTOS_GRILLA[primero.getMonth()]} – ${ultimo.getDate()} ${MESES_CORTOS_GRILLA[ultimo.getMonth()]} ${ultimo.getFullYear()}`;
+}
+
 // --- Inicio de la pantalla ---
 
 async function iniciarAgenda(user, datosUsuario) {
@@ -205,6 +221,14 @@ function urlVistaMensualGrilla() {
 
 function irAMesGrilla() {
   window.location.href = urlVistaMensualGrilla();
+}
+
+// Etapa 5 — botón "Día" del selector de vista: abre hoy si está en la semana visible (y no es
+// domingo); si no, el lunes de esa semana.
+async function irADiaDesdeSemanaGrilla() {
+  const dias = obtenerDiasVisiblesGrilla().map(fechaISO);
+  const hoy = fechaISO(new Date());
+  await abrirVistaDia(dias.includes(hoy) ? hoy : dias[0]);
 }
 
 async function cargarSedesGrilla() {
@@ -541,7 +565,9 @@ function puedeArrastrarTurnoGrilla(turno) {
 function renderizarGrilla() {
   const sede = sedesCacheGrilla.find(s => s.id === sedeSeleccionadaGrilla);
   const dias = obtenerDiasVisiblesGrilla();
-  document.getElementById("etiqueta-semana-grilla").textContent = formatearRangoSemanaGrilla(dias);
+  const etiquetaSemana = document.getElementById("etiqueta-semana-grilla");
+  etiquetaSemana.textContent = formatearRangoCortoSemanaGrilla(dias);
+  etiquetaSemana.title = formatearRangoSemanaGrilla(dias);
 
   const minutoApertura = minutoDesdeString(sede.horaApertura);
   const minutoCierre = minutoDesdeString(sede.horaCierre);
