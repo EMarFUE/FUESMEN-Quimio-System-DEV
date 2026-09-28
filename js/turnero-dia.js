@@ -1,8 +1,10 @@
 // Etapa 5, fase 2 — vista de día de la agenda (modo "Día" dentro de turnero/agenda.html).
 //
 // Qué es: una lista por hora con TODOS los turnos de un día (una fila por turno, sin dibujar
-// la duración), un mini calendario a la izquierda para moverse de día en día, y el mismo
-// botón "+ Nuevo turno" y filtro por médico de la agenda semanal. Cada fila lleva lo mismo
+// la duración) y, a la izquierda, una lateral angosta con un mini calendario solo de
+// navegación y, debajo, los controles que en semana/mes están en la barra de arriba (sede,
+// médico, "+ Nuevo turno", "Consultar disponibilidad", Actualizar, Ver semana, Ver mes).
+// Arriba de la lista van la fecha grande, ‹ › / Hoy y el menú ☰. Cada fila lleva lo mismo
 // que la tarjeta semanal (checkbox de presente, borde/etiqueta de prioridad, color de
 // presente, badge 💬, ↻ de reacomodo) más horario completo, nombre completo, médico y
 // ciclo/sesión. No hay arrastre: cambiar un turno se hace con Reasignar / Modificar /
@@ -40,6 +42,7 @@ const MESES_LABEL_DIA = [
   "Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio",
   "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"
 ];
+const DIAS_LABEL_DIA = ["Domingo", "Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado"];
 const INICIALES_DIAS_CALENDARIO_DIA = ["L", "M", "M", "J", "V", "S"];
 const ETIQUETAS_PRIORIDAD_DIA = {
   rojo: "Rojo — hay que verlo obligatoriamente",
@@ -54,6 +57,18 @@ const cacheMesesDia = new Map(); // "sede|desde|hasta" -> { turnos, leidoEn }
 let turnosDelDiaDia = [];        // turnos del día mostrado (todos los médicos)
 let leidoEnDiaDia = null;        // Date de la última lectura del día mostrado
 let versionCargaDia = 0;         // descarta respuestas viejas si se navega más rápido que la red
+
+// Controles de la barra superior que en modo día viven en la lateral (o en la cabecera, el
+// menú ☰). Se MUEVEN de lugar —son los mismos elementos, con sus ids y sus onclick—; en la
+// barra queda un marcador (comentario) para devolverlos exactamente a su sitio.
+const CONTROLES_MOVIBLES_DIA = [
+  { selector: "#selector-sede-grilla", slot: "slot-sede-dia" },
+  { selector: "#filtro-medico-grilla", slot: "slot-medico-dia" },
+  { selector: "#boton-nuevo-turno-grilla", slot: "slot-nuevo-turno-dia" },
+  { selector: "#boton-consultar-disponibilidad-grilla", slot: "slot-consultar-dia" },
+  { selector: ".menu-cuenta-grilla", slot: "slot-menu-cuenta-dia" }
+];
+const marcadoresControlesDia = new Map(); // selector -> comentario que marca su lugar en la barra
 
 // --- Fechas ---
 
@@ -157,12 +172,31 @@ function aplicarDiaLeidoDia(turnosDelDia) {
 
 // --- Cambio de modo semana <-> día ---
 
+function moverControlesDia(haciaLateral) {
+  for (const { selector, slot } of CONTROLES_MOVIBLES_DIA) {
+    const elemento = document.querySelector(selector);
+    if (haciaLateral) {
+      if (!elemento || marcadoresControlesDia.has(selector)) continue;
+      const marcador = document.createComment(selector);
+      elemento.replaceWith(marcador);
+      marcadoresControlesDia.set(selector, marcador);
+      document.getElementById(slot).appendChild(elemento);
+    } else {
+      const marcador = marcadoresControlesDia.get(selector);
+      if (!marcador || !elemento) continue;
+      marcador.replaceWith(elemento);
+      marcadoresControlesDia.delete(selector);
+    }
+  }
+}
+
 function mostrarModoDia(activo) {
   modoVistaGrilla = activo ? "dia" : "semana";
-  document.getElementById("nav-semana-botones").style.display = activo ? "none" : "contents";
-  document.getElementById("nav-dia-botones").style.display = activo ? "contents" : "none";
+  moverControlesDia(activo);
+  // Con todos sus controles movidos, la barra superior queda vacía: se oculta entera.
+  document.querySelector(".barra-controles-grilla").style.display = activo ? "none" : "";
   document.querySelector(".grilla-scroll-grilla").style.display = activo ? "none" : "";
-  document.getElementById("vista-dia").style.display = activo ? "block" : "none";
+  document.getElementById("vista-dia").style.display = activo ? "grid" : "none";
 }
 
 // Punto de entrada: encabezado de un día de la semana, número de día del mes, o la URL
@@ -327,9 +361,12 @@ function formatearHoraLecturaDia(fecha) {
   return fecha ? `${String(fecha.getHours()).padStart(2, "0")}:${String(fecha.getMinutes()).padStart(2, "0")}` : "-";
 }
 
+// Fecha grande de la cabecera: número, día de la semana y mes/año.
 function renderizarBarraDia() {
-  document.getElementById("etiqueta-dia-grilla").textContent =
-    formatearFechaLegibleMotor(fechaDesdeISO(fechaSeleccionadaDia));
+  const fecha = fechaDesdeISO(fechaSeleccionadaDia);
+  document.getElementById("numero-dia-dia").textContent = String(fecha.getDate());
+  document.getElementById("nombre-dia-dia").textContent = DIAS_LABEL_DIA[fecha.getDay()];
+  document.getElementById("mes-dia-dia").textContent = `${MESES_LABEL_DIA[fecha.getMonth()]} ${fecha.getFullYear()}`;
 }
 
 function renderizarDia() {
@@ -418,10 +455,7 @@ function renderizarPanelDia() {
       </div>`;
 
   document.getElementById("panel-dia").innerHTML = `
-    <div class="cabecera-panel-dia">
-      <h2>${escaparHtmlGrilla(formatearFechaLegibleMotor(fechaDesdeISO(fechaSeleccionadaDia)))}</h2>
-      <div class="resumen-dia">${resumen}</div>
-    </div>
+    <div class="resumen-dia">${resumen}</div>
     ${bloqueosHtml ? `<div class="bloqueos-dia">${bloqueosHtml}</div>` : ""}
     ${listaHtml}
   `;

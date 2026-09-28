@@ -1715,9 +1715,10 @@ h1 {
   flex-wrap: wrap;
 }
 
-/* Etapa 5, fase 2: vista de día de la agenda (turnero-dia.js). Encabezado de día de la
-   semana clickeable, mini calendario a la izquierda y lista por hora a la derecha. Reutiliza
-   .badge-sillon-grilla, .badge-reacomodo-grilla y los colores de prioridad/presente. */
+/* Etapa 5, fase 2: vista de día de la agenda (turnero-dia.js). Lateral angosta a la
+   izquierda (calendario de navegación + controles), fecha grande y lista por hora a la
+   derecha. Reutiliza .badge-sillon-grilla, .badge-reacomodo-grilla y los colores de
+   prioridad/presente. */
 .encabezado-dia-grilla.enlace-dia-grilla {
   cursor: pointer;
 }
@@ -1726,44 +1727,48 @@ h1 {
   text-decoration: underline;
 }
 
-.etiqueta-semana-grilla.etiqueta-dia-grilla {
-  min-width: 260px;
-}
-
 .layout-dia {
   display: grid;
-  grid-template-columns: 250px minmax(0, 1fr);
-  gap: 16px;
+  grid-template-columns: 208px minmax(0, 1fr);
+  gap: 14px;
   align-items: start;
 }
 
+.lateral-dia {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  position: sticky;
+  top: 8px;
+}
+
+/* Calendario: solo navegación, chico. Días de 26 px de alto: más chicos cuestan en tablet. */
 .calendario-dia {
   background: var(--color-surface);
   border: 1px solid var(--color-border);
   border-radius: var(--radius);
-  padding: 10px;
-  position: sticky;
-  top: 8px;
+  padding: 8px;
 }
 
 .encabezado-calendario-dia {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  font-size: 13.5px;
+  font-size: 12.5px;
   font-weight: 600;
-  margin-bottom: 8px;
+  margin-bottom: 6px;
 }
 
 .encabezado-calendario-dia button {
   background: transparent;
   border: 1px solid var(--color-border);
   border-radius: 6px;
-  width: 28px;
-  height: 26px;
+  width: 26px;
+  height: 24px;
   cursor: pointer;
   font-family: var(--font);
   color: var(--color-text);
+  padding: 0;
 }
 
 .encabezado-calendario-dia button:hover {
@@ -1773,24 +1778,24 @@ h1 {
 .grilla-calendario-dia {
   display: grid;
   grid-template-columns: repeat(6, 1fr);
-  gap: 2px;
+  gap: 1px;
 }
 
 .inicial-calendario-dia {
   text-align: center;
-  font-size: 11px;
+  font-size: 10.5px;
   color: var(--color-muted);
-  padding: 2px 0;
+  padding: 1px 0;
 }
 
 .celda-calendario-dia {
   position: relative;
-  height: 34px;
+  height: 26px;
   border: 1px solid transparent;
-  border-radius: 6px;
+  border-radius: 5px;
   background: transparent;
   font-family: var(--font);
-  font-size: 12.5px;
+  font-size: 11.5px;
   color: var(--color-text);
   cursor: pointer;
   padding: 0;
@@ -1819,10 +1824,10 @@ h1 {
   content: "";
   position: absolute;
   left: 50%;
-  bottom: 3px;
-  width: 5px;
-  height: 5px;
-  margin-left: -2.5px;
+  bottom: 2px;
+  width: 4px;
+  height: 4px;
+  margin-left: -2px;
   border-radius: 50%;
   background: var(--color-accent);
 }
@@ -1834,24 +1839,142 @@ h1 {
 .pie-calendario-dia {
   display: flex;
   flex-direction: column;
-  gap: 2px;
-  margin-top: 8px;
-  font-size: 11.5px;
+  gap: 1px;
+  margin-top: 6px;
+  font-size: 10.5px;
   color: var(--color-muted);
 }
 
 .pie-calendario-dia .enlace-accion {
   align-self: flex-start;
-  font-size: 11.5px;
+  font-size: 10.5px;
+  padding: 0;
+}
+
+/* Controles que en semana/mes viven en la barra de arriba (los mueve turnero-dia.js). */
+.controles-lateral-dia {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.grupo-lateral-dia {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.rotulo-lateral-dia {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--color-muted);
+}
+
+.controles-lateral-dia .selector-sede-grilla {
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.controles-lateral-dia .filtro-medico-grilla {
+  width: 100%;
+}
+
+/* Los botones "+ Nuevo turno" y "Consultar disponibilidad" traen width:auto en línea. */
+.controles-lateral-dia .boton-principal,
+.controles-lateral-dia .boton-secundario {
+  width: 100% !important;
+  margin: 0;
+}
+
+.separador-lateral-dia {
+  border-top: 1px solid var(--color-border);
+}
+
+.boton-lateral-dia {
+  width: 100%;
+  background: transparent;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  padding: 6px 10px;
+  font-family: var(--font);
+  font-size: 13px;
+  color: var(--color-text);
+  cursor: pointer;
+  text-align: left;
+}
+
+.boton-lateral-dia:hover {
+  background: var(--color-bg);
+}
+
+.columna-principal-dia {
+  min-width: 0;
+}
+
+/* Cabecera: fecha grande (como en la imagen de referencia), ‹ Hoy › y el menú ☰. */
+.cabecera-dia {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 8px;
+}
+
+.fecha-grande-dia {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.numero-dia-dia {
+  font-size: 40px;
+  font-weight: 300;
+  line-height: 1;
+}
+
+.textos-fecha-dia {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.2;
+}
+
+.nombre-dia-dia {
+  font-size: 18px;
+  color: #1c5c7a;
+}
+
+.mes-dia-dia {
+  font-size: 12.5px;
+  color: var(--color-muted);
+}
+
+.navegacion-dia-cabecera {
+  display: flex;
+  gap: 6px;
+}
+
+.navegacion-dia-cabecera button {
+  background: transparent;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  min-width: 34px;
+  height: 32px;
+  padding: 0 10px;
+  cursor: pointer;
+  font-family: var(--font);
+  font-size: 13.5px;
+  color: var(--color-text);
+}
+
+.navegacion-dia-cabecera button:hover {
+  background: var(--color-bg);
+}
+
+.slot-menu-cuenta-dia {
+  margin-left: auto;
 }
 
 .panel-dia {
   min-width: 0;
-}
-
-.cabecera-panel-dia h2 {
-  margin: 0 0 2px;
-  font-size: 18px;
 }
 
 .resumen-dia {
@@ -1892,10 +2015,10 @@ h1 {
 
 .fila-turno-dia {
   display: grid;
-  grid-template-columns: 40px 104px 48px minmax(150px, 1.6fr) minmax(120px, 1.1fr) 120px minmax(120px, auto);
+  grid-template-columns: 40px 100px 48px minmax(140px, 1.6fr) minmax(110px, 1.1fr) 108px minmax(110px, auto);
   align-items: center;
   gap: 8px;
-  min-width: 760px;
+  min-width: 720px;
   padding: 7px 10px 7px 6px;
   border-bottom: 1px solid var(--color-border);
   border-left: 5px solid transparent;
@@ -2006,11 +2129,22 @@ h1 {
   color: var(--color-text);
 }
 
-@media (max-width: 820px) {
+/* Pantallas angostas: la lateral pasa arriba, con el calendario a la izquierda y los
+   controles a su lado, para no empujar la lista hacia abajo. */
+@media (max-width: 900px) {
   .layout-dia {
     grid-template-columns: 1fr;
   }
-  .calendario-dia {
+  .lateral-dia {
+    display: grid;
+    grid-template-columns: 208px minmax(0, 1fr);
+    align-items: start;
     position: static;
+  }
+}
+
+@media (max-width: 560px) {
+  .lateral-dia {
+    grid-template-columns: 1fr;
   }
 }

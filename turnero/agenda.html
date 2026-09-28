@@ -22,25 +22,12 @@
       <button type="button" id="boton-consultar-disponibilidad-grilla" class="boton-secundario" style="display:none;width:auto;"
         onclick="abrirConsultaDisponibilidadGrilla()">Consultar disponibilidad</button>
       <div class="navegacion-semana-grilla">
-        <!-- Etapa 5, fase 2: dos grupos de botones que se alternan según el modo (semana | día).
-             display:contents los deja como hijos directos del flex, igual que antes. -->
-        <span id="nav-semana-botones" style="display:contents;">
-          <button type="button" onclick="cambiarSemanaGrilla(-1)">‹ Semana anterior</button>
-          <span class="etiqueta-semana-grilla" id="etiqueta-semana-grilla"></span>
-          <button type="button" onclick="irASemanaActualGrilla()">Hoy</button>
-          <button type="button" onclick="cambiarSemanaGrilla(1)">Semana siguiente ›</button>
-          <!-- Etapa 5: vista mensual (pantalla aparte, solo consulta). -->
-          <button type="button" onclick="irAMesGrilla()">Ver mes</button>
-        </span>
-        <span id="nav-dia-botones" style="display:none;">
-          <button type="button" onclick="cambiarDiaDia(-1)">‹ Día anterior</button>
-          <span class="etiqueta-semana-grilla etiqueta-dia-grilla" id="etiqueta-dia-grilla"></span>
-          <button type="button" onclick="irAHoyDia()">Hoy</button>
-          <button type="button" onclick="cambiarDiaDia(1)">Día siguiente ›</button>
-          <button type="button" onclick="actualizarDiaDia()" title="Volver a leer este día">Actualizar</button>
-          <button type="button" onclick="irASemanaDesdeDiaDia()">Ver semana</button>
-          <button type="button" onclick="irAMesDesdeDiaDia()">Ver mes</button>
-        </span>
+        <button type="button" onclick="cambiarSemanaGrilla(-1)">‹ Semana anterior</button>
+        <span class="etiqueta-semana-grilla" id="etiqueta-semana-grilla"></span>
+        <button type="button" onclick="irASemanaActualGrilla()">Hoy</button>
+        <button type="button" onclick="cambiarSemanaGrilla(1)">Semana siguiente ›</button>
+        <!-- Etapa 5: vista mensual (pantalla aparte, solo consulta). -->
+        <button type="button" onclick="irAMesGrilla()">Ver mes</button>
         <div class="menu-cuenta-grilla">
           <button type="button" class="boton-menu-cuenta-grilla" onclick="alternarMenuCuentaGrilla(event)" title="Cuenta">☰</button>
           <div class="panel-menu-cuenta-grilla" id="panel-menu-cuenta-grilla" style="display:none;">
@@ -58,11 +45,51 @@
       </div>
     </div>
 
-    <!-- Etapa 5, fase 2: vista de día (ver turnero-dia.js). Mini calendario a la izquierda,
-         lista de turnos del día a la derecha. Los modales de abajo son los mismos de la semana. -->
+    <!-- Etapa 5, fase 2: vista de día (ver turnero-dia.js). Lateral angosta a la izquierda con
+         el calendario de navegación y, debajo, los controles que en semana/mes están en la
+         barra de arriba; a la derecha, la fecha y la lista de turnos. Al entrar al modo día,
+         turnero-dia.js MUEVE a los "slot-…" de acá los mismos elementos de la barra (sede,
+         médico, nuevo turno, consultar disponibilidad y el menú ☰) — no hay copias, así que
+         sus ids y su lógica no cambian — y los devuelve a la barra al volver a la semana.
+         Los modales de abajo son los mismos de la semana. -->
     <div id="vista-dia" class="layout-dia" style="display:none;">
-      <aside id="calendario-dia" class="calendario-dia"></aside>
-      <section id="panel-dia" class="panel-dia"></section>
+      <aside class="lateral-dia">
+        <div id="calendario-dia" class="calendario-dia"></div>
+        <div class="controles-lateral-dia">
+          <div class="grupo-lateral-dia">
+            <span class="rotulo-lateral-dia">Sede</span>
+            <div id="slot-sede-dia"></div>
+          </div>
+          <div class="grupo-lateral-dia">
+            <span class="rotulo-lateral-dia">Médico</span>
+            <div id="slot-medico-dia"></div>
+          </div>
+          <div id="slot-nuevo-turno-dia"></div>
+          <div id="slot-consultar-dia"></div>
+          <div class="separador-lateral-dia"></div>
+          <button type="button" class="boton-lateral-dia" onclick="actualizarDiaDia()" title="Volver a leer este día">Actualizar</button>
+          <button type="button" class="boton-lateral-dia" onclick="irASemanaDesdeDiaDia()">Ver semana</button>
+          <button type="button" class="boton-lateral-dia" onclick="irAMesDesdeDiaDia()">Ver mes</button>
+        </div>
+      </aside>
+      <section class="columna-principal-dia">
+        <header class="cabecera-dia">
+          <div class="fecha-grande-dia">
+            <span class="numero-dia-dia" id="numero-dia-dia"></span>
+            <span class="textos-fecha-dia">
+              <span class="nombre-dia-dia" id="nombre-dia-dia"></span>
+              <span class="mes-dia-dia" id="mes-dia-dia"></span>
+            </span>
+          </div>
+          <div class="navegacion-dia-cabecera">
+            <button type="button" onclick="cambiarDiaDia(-1)" title="Día anterior" aria-label="Día anterior">‹</button>
+            <button type="button" onclick="irAHoyDia()">Hoy</button>
+            <button type="button" onclick="cambiarDiaDia(1)" title="Día siguiente" aria-label="Día siguiente">›</button>
+          </div>
+          <div id="slot-menu-cuenta-dia" class="slot-menu-cuenta-dia"></div>
+        </header>
+        <div id="panel-dia" class="panel-dia"></div>
+      </section>
     </div>
   </div>
 
