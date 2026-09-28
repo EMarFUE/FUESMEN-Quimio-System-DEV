@@ -58,6 +58,19 @@ function esDepositoHistoricoCorreccion(deposito) {
   return DEPOSITOS_HISTORICOS_CORRECCION.includes(deposito);
 }
 
+// Etapa 5B, punto 2 — al corregir una ENTREGA no se puede mover hacia un depósito "(viejo)"
+// (son de solo consumo). Si la entrega YA está en uno, esa opción queda habilitada y
+// seleccionada (mantener el depósito es válido); NO se borra el <option>, porque entonces el
+// desplegable caería en la primera opción y cambiaría el depósito sin avisar.
+function opcionesDepositoCorreccionEntrega(depositoActual) {
+  return ["FUESMEN", "Programa Oncológico", "Donaciones", "POP (viejo)", "FUESMEN (viejo)"]
+    .map((d) => {
+      const bloqueado = esDepositoHistoricoCorreccion(d) && d !== depositoActual;
+      return `<option value="${d}" ${d === depositoActual ? "selected" : ""} ${bloqueado ? "disabled" : ""}>${d}${bloqueado ? " — solo consumo" : ""}</option>`;
+    })
+    .join("");
+}
+
 function labelUnidadCorreccion(unidad) {
   return (UNIDADES_MEDIDA_CORRECCION.find((u) => u.value === unidad) || {}).label || unidad;
 }
@@ -1133,13 +1146,7 @@ function renderFormularioCorreccionEntrega(datos) {
   cuerpo.innerHTML = `
     <div class="campo" style="margin-top:10px;">
       <label>Depósito</label>
-      <select id="corr-deposito">
-        <option value="FUESMEN" ${datos.deposito === "FUESMEN" ? "selected" : ""}>FUESMEN</option>
-        <option value="Programa Oncológico" ${datos.deposito === "Programa Oncológico" ? "selected" : ""}>Programa Oncológico</option>
-        <option value="Donaciones" ${datos.deposito === "Donaciones" ? "selected" : ""}>Donaciones</option>
-        <option value="POP (viejo)" ${datos.deposito === "POP (viejo)" ? "selected" : ""}>POP (viejo)</option>
-        <option value="FUESMEN (viejo)" ${datos.deposito === "FUESMEN (viejo)" ? "selected" : ""}>FUESMEN (viejo)</option>
-      </select>
+      <select id="corr-deposito">${opcionesDepositoCorreccionEntrega(datos.deposito)}</select>
     </div>
 
     <div class="titulo-bloque" style="margin-top:14px;">a quién pertenece</div>
@@ -1259,6 +1266,12 @@ function recolectarDatosCorreccionEntrega() {
   const nombre = capitalizarPalabras(document.getElementById("corr-entrega-nombre").value);
   const apellido = capitalizarPalabras(document.getElementById("corr-entrega-apellido").value);
   const documento = soloDigitos(document.getElementById("corr-entrega-documento").value);
+
+  // Segunda barrera (las opciones ya vienen deshabilitadas): no mover una entrega hacia un viejo.
+  if (esDepositoHistoricoCorreccion(deposito) && (!panelDatosOriginales || panelDatosOriginales.deposito !== deposito)) {
+    mostrarError(`«${deposito}» es un depósito de solo consumo: no se puede mover una entrega hacia allí. Elegí otro depósito.`);
+    return null;
+  }
 
   if (!correccionPacienteSeleccionado) {
     mostrarError(esDonacion ? "Falta indicar a quién pertenecía la medicación." : "Falta indicar a quién pertenece la medicación.");

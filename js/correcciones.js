@@ -39,6 +39,21 @@ let procesando = false;
 // permitido por firestore.rules; agregar un campo nuevo a "correcciones" requeriría tocarlas).
 let negativosRevisionCorreccion = { correccionId: null, lineas: [] };
 
+// Etapa 5B, punto 2 — los depósitos "(viejo)" son de solo consumo: una entrega no puede
+// MOVERSE hacia uno (corregir una entrega que ya está en uno, manteniendo el depósito, sí se
+// permite). El formulario de historial.js ya no ofrece esa opción, y firestore.rules la
+// rechaza; esto cubre solicitudes pendientes que se hayan pedido antes del cambio, para que
+// el administrador vea un mensaje claro en vez de un error de permisos al aprobar.
+const DEPOSITOS_SOLO_CONSUMO_CORRECCIONES = ["POP (viejo)", "FUESMEN (viejo)"];
+
+function correccionMueveEntregaAViejo(correccion) {
+  return correccion.coleccionOrigen === "entregas" &&
+    correccion.tipo === "correccion" &&
+    !!correccion.datosCorregidos &&
+    DEPOSITOS_SOLO_CONSUMO_CORRECCIONES.includes(correccion.datosCorregidos.deposito) &&
+    correccion.datosCorregidos.deposito !== (correccion.datosOriginales || {}).deposito;
+}
+
 const TAMANO_PAGINA_CORRECCIONES = 25;
 
 function normalizarTexto(texto) {
@@ -512,7 +527,17 @@ function renderizarModalRevision(correccion, ajustes, previews) {
     `;
   }
 
-  const negativos = vinculado ? [] : calcularNegativosDeAprobacion(ajustes, previews);
+  const bloqueadaPorViejo = correccionMueveEntregaAViejo(correccion);
+  const negativos = (vinculado || bloqueadaPorViejo) ? [] : calcularNegativosDeAprobacion(ajustes, previews);
+  const bloqueAvisoViejo = !bloqueadaPorViejo ? "" : `
+    <div class="tarjeta-confirmacion-stock" style="margin-top:14px;border-color:var(--color-danger);background:var(--color-danger-soft);">
+      <div class="titulo-confirmacion-stock" style="color:var(--color-danger);">No se puede aprobar</div>
+      <div class="texto-confirmacion-stock" style="color:var(--color-danger);margin-bottom:0;">
+        Esta solicitud mueve la entrega al depósito «${escaparHtml(correccion.datosCorregidos.deposito)}», que es de solo
+        consumo y ya no admite cargas. Rechazala y pedí que se cargue en otro depósito.
+      </div>
+    </div>
+  `;
   negativosRevisionCorreccion = { correccionId: correccion.id, lineas: negativos };
   const bloqueNegativo = negativos.length === 0 ? "" : `
     <div class="tarjeta-confirmacion-stock" style="margin-top:14px;border-color:var(--color-danger);background:var(--color-danger-soft);">
@@ -545,6 +570,7 @@ function renderizarModalRevision(correccion, ajustes, previews) {
     ${bloqueComparacion}
     ${bloqueEfecto}
     ${bloqueNegativo}
+    ${bloqueAvisoViejo}
 
     <div class="campo" style="margin-top:16px;margin-bottom:12px;">
       <label>Comentario de resolución (opcional)</label>
@@ -555,7 +581,7 @@ function renderizarModalRevision(correccion, ajustes, previews) {
       <button type="button" class="enlace-accion peligro" style="margin-left:0;" onclick="rechazarCorreccion('${correccion.id}')">Rechazar</button>
       <div style="flex:1;"></div>
       <button type="button" class="boton-secundario" style="width:auto;" onclick="cerrarRevisionCorreccion()">Cancelar</button>
-      <button type="button" id="boton-aprobar-correccion" class="boton-principal" style="width:auto;padding-left:20px;padding-right:20px;" ${negativos.length > 0 ? "disabled" : ""} onclick="aprobarCorreccion('${correccion.id}')">Aprobar</button>
+      <button type="button" id="boton-aprobar-correccion" class="boton-principal" style="width:auto;padding-left:20px;padding-right:20px;" ${(negativos.length > 0 || bloqueadaPorViejo) ? "disabled" : ""} onclick="aprobarCorreccion('${correccion.id}')">Aprobar</button>
     </div>
   `;
 }
@@ -655,6 +681,12 @@ async function aprobarCorreccion(id) {
 
   const correccion = correccionesCache.find((c) => c.id === id);
   if (!correccion) { procesando = false; return; }
+
+  if (correccionMueveEntregaAViejo(correccion)) {
+    mostrarErrorEnModal(`Esta solicitud mueve la entrega a «${correccion.datosCorregidos.deposito}», un depósito de solo consumo. No se puede aprobar: rechazala.`);
+    procesando = false;
+    return;
+  }
 
   // Etapa 5B: si la aprobación deja stock más negativo, hace falta la casilla tildada (el
   // botón ya viene deshabilitado hasta entonces; esto es la segunda barrera).
