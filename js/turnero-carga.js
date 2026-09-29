@@ -2174,7 +2174,15 @@ async function buscarYGuardarConHorarioManual(datosBasicos, horarioManualString,
   try {
     const resultado = await buscarSillonHorarioFijo(
       datosBasicos.medicoId || datosBasicos.medicoNombre,
-      pacienteSeleccionadoCarga.obraSocial || "",
+      // Bug reportado por Elías (Etapa 5C, 2.8): esta función se escribió originalmente
+      // solo para "+ nuevo turno" y usaba pacienteSeleccionadoCarga.obraSocial directo —
+      // en Reasignar no hay ningún paciente elegido en ESTE formulario, esa variable
+      // global queda en null y explota. Mismo criterio ya establecido en el resto del
+      // archivo (ver comentario en buscarComoSobreturnoFisico, línea ~1981): usar
+      // datosBasicos.pacienteObraSocial, que tanto "+ nuevo turno" (buscarYMostrarHuecos)
+      // como Reasignar (buscarReasignarGrilla/buscarReasignarHorarioManualGrilla) ya
+      // completan antes de llamar para acá.
+      datosBasicos.pacienteObraSocial || "",
       datosBasicos.duracionTotalMinutos,
       datosBasicos.fecha,
       horarioManualString,
