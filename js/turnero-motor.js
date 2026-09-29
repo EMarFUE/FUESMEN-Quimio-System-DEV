@@ -1254,7 +1254,16 @@ function validarHuecoEspecificoEnSede({
   }
 
   // --- Superposición física en el sillón elegido, excluyendo el propio turno ---
-  const conflicto = turnosExistentesEnSede.some(t => {
+  //
+  // Bug reportado por Elías: solo aplica si se eligió un sillón físico real
+  // (sillon != null) — "Sin asignar (sobreturno)" no reclama ningún sillón físico, así
+  // que dos sobreturnos sin sillón NUNCA compiten entre sí por más que se superpongan en
+  // horario (son marcas administrativas, no ocupan nada). Sin este guard, "t.sillon !==
+  // sillon" comparaba null !== null → false → seguía al chequeo de horario, y cualquier
+  // sobreturno con horario superpuesto a otro sobreturno del mismo día disparaba
+  // "sillonOcupado" en falso — mismo criterio que el chequeo de bloqueos de arriba
+  // (sillon != null && bloqueosCacheLectura).
+  const conflicto = sillon != null && turnosExistentesEnSede.some(t => {
     if (t.id === turnoIdExcluir) return false;
     if (t.fecha !== fechaActualISO || t.sillon !== sillon) return false;
     if (typeof t.horarioInicio !== "string" || typeof t.horarioFin !== "string") return false;
