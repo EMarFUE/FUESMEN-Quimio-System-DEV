@@ -49,6 +49,20 @@ let rolActualMensual = null;
 const cacheMesesMensual = new Map(); // "sede|desde|hasta" -> { turnos, leidoEn }
 let versionCargaMensual = 0; // descarta respuestas viejas si se navega más rápido que la red
 
+// Etapa 5C, punto 2.6 — mismo criterio y mismo formato que
+// formatearDuracionComprobanteTurno en turnero/comprobante-turno.html, y que
+// formatearDuracionDetalleGrilla en turnero-grilla.js (archivo aparte: agenda-mensual.html
+// no carga turnero-grilla.js).
+function formatearDuracionDetalleMensual(minutos) {
+  const total = Number(minutos);
+  if (!total || total <= 0) return "-";
+  const horas = Math.floor(total / 60);
+  const mins = total % 60;
+  if (horas === 0) return `${mins} min`;
+  if (mins === 0) return `${horas} h`;
+  return `${horas} h ${mins} min`;
+}
+
 function escaparHtmlMensual(texto) {
   return String(texto == null ? "" : texto)
     .replace(/&/g, "&amp;")
@@ -437,7 +451,11 @@ function abrirDetalleMensual(turnoId) {
     ["Sillón", turno.sillon != null ? `${turno.sillon}${esBackup ? " (backup)" : ""}` : "Sin asignar (sobreturno)"],
     ["Horario", `${turno.horarioInicio || "-"} – ${turno.horarioFin || "-"}`],
     ["Fecha", turno.fecha || "-"],
-    ["Médico", turno.medicoNombre || "-"]
+    ["Médico", turno.medicoNombre || "-"],
+    // Etapa 5C, punto 2.6 — mismo criterio que abrirDetalleTurnoGrilla: siempre
+    // visibles, "-" si falta el dato, sin fila de premedicación (ver ese archivo).
+    ["Protocolo(s)", (turno.protocolos || []).map((p) => (p && p.nombre) || p).join(", ") || "-"],
+    ["Tiempo estimado", formatearDuracionDetalleMensual(turno.duracionTotalMinutos)]
   ];
   if (turno.ciclo != null || turno.sesion != null) {
     filas.push(["Ciclo / Sesión", `${turno.ciclo ?? "-"} / ${turno.sesion ?? "-"}`]);

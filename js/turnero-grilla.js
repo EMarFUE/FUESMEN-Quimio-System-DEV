@@ -76,6 +76,18 @@ function escaparHtmlGrilla(texto) {
   return div.innerHTML;
 }
 
+// Etapa 5C, punto 2.6 — mismo criterio y mismo formato que
+// formatearDuracionComprobanteTurno en turnero/comprobante-turno.html.
+function formatearDuracionDetalleGrilla(minutos) {
+  const total = Number(minutos);
+  if (!total || total <= 0) return "-";
+  const horas = Math.floor(total / 60);
+  const mins = total % 60;
+  if (horas === 0) return `${mins} min`;
+  if (mins === 0) return `${horas} h`;
+  return `${horas} h ${mins} min`;
+}
+
 // --- Cálculo de la semana visible (lunes a sábado) ---
 
 function calcularLunesGrilla(fechaBase) {
@@ -2387,7 +2399,14 @@ function abrirDetalleTurnoGrilla(turnoId) {
     ["Sillón", turno.sillon != null ? `${turno.sillon}${esBackup ? " (backup)" : ""}` : "Sin asignar (sobreturno)"],
     ["Horario", `${turno.horarioInicio || "-"} – ${turno.horarioFin || "-"}`],
     ["Fecha", turno.fecha || "-"],
-    ["Médico", turno.medicoNombre || "-"]
+    ["Médico", turno.medicoNombre || "-"],
+    // Etapa 5C, punto 2.6 — mismas etiqueta y fuente de datos que "Protocolo(s)" y
+    // "Tiempo estimado de tratamiento" en el comprobante. Siempre visibles (con "-" si
+    // el turno no tiene el dato, p. ej. turnos viejos), a diferencia de las filas
+    // condicionales de abajo. No se agrega fila de premedicación: hoy tampoco se
+    // muestra en el comprobante, solo suma minutos a duracionTotalMinutos.
+    ["Protocolo(s)", (turno.protocolos || []).map((p) => (p && p.nombre) || p).join(", ") || "-"],
+    ["Tiempo estimado", formatearDuracionDetalleGrilla(turno.duracionTotalMinutos)]
   ];
   if (turno.ciclo != null || turno.sesion != null) {
     filas.push(["Ciclo / Sesión", `${turno.ciclo ?? "-"} / ${turno.sesion ?? "-"}`]);

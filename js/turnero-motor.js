@@ -1316,7 +1316,9 @@ function validarModificacionTurno(
   });
 }
 
-// --- Ronda "mejoras motor", Frente 2: horario manual (exclusivo administrador) ---
+// --- Ronda "mejoras motor", Frente 2: horario manual (administrador y enfermería desde
+// la Etapa 5C, punto 2.5; el rol se decide en turnero-carga.js, esta función no sabe de
+// roles) ---
 //
 // A diferencia de buscarHuecos (que recorre hasta 10 días buscando el mejor ajuste),
 // esta función valida UN horario fijo, elegido a mano, y solo decide qué sillón

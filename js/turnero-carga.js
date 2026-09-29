@@ -1056,8 +1056,9 @@ function actualizarResumenDuracion() {
 
 // --- Ronda "mejoras motor" (post T12): visibilidad de horario manual y sillón backup ---
 //
-// Frente 2 (horario manual, exclusivo administrador): no depende de médico ni
-// protocolos, solo del rol.
+// Frente 2 (horario manual): administrador y enfermería (Etapa 5C, punto 2.5 — antes
+// exclusivo administrador; médico y administrativo siguen sin verlo). No depende de
+// médico ni protocolos, solo del rol.
 // Frente 3 (sillón backup): visible recién después de elegir médico y protocolo(s), para
 // cualquier rol que pueda cargar turnos (administrador, enfermería o médico) — el sillón
 // backup está disponible para todos los médicos por igual, sin permiso individual.
@@ -1066,8 +1067,9 @@ function actualizarVisibilidadCamposEspeciales() {
   const bloqueBackup = document.getElementById("bloque-sillon-backup");
   if (!bloqueHorarioManual || !bloqueBackup) return; // por si se llama antes de que el DOM esté armado
 
-  bloqueHorarioManual.style.display = rolActualCarga === "administrador" ? "block" : "none";
-  if (rolActualCarga !== "administrador") {
+  const puedeHorarioManual = rolActualCarga === "administrador" || rolActualCarga === "enfermeria";
+  bloqueHorarioManual.style.display = puedeHorarioManual ? "block" : "none";
+  if (!puedeHorarioManual) {
     const campoHorarioManual = document.getElementById("campo-horario-manual");
     if (campoHorarioManual) campoHorarioManual.value = "";
   }
@@ -1251,11 +1253,13 @@ async function intentarGuardarTurno() {
     })()
   };
 
-  // Ronda "mejoras motor": horario manual (Frente 2, exclusivo administrador) y checkbox
-  // de "solo sillón backup" (Frente 3) — ninguno de los dos aplica a "Reasignar" (que no
-  // pasa por acá, tiene su propio flujo en turnero-grilla.js).
+  // Ronda "mejoras motor": horario manual (Frente 2, administrador y enfermería desde
+  // la Etapa 5C, punto 2.5) y checkbox de "solo sillón backup" (Frente 3) — ninguno de
+  // los dos aplica a "Reasignar" (que no pasa por acá, tiene su propio flujo en
+  // turnero-grilla.js).
   const campoHorarioManual = document.getElementById("campo-horario-manual");
-  const horarioManual = (rolActualCarga === "administrador" && campoHorarioManual) ? campoHorarioManual.value : "";
+  const horarioManual = ((rolActualCarga === "administrador" || rolActualCarga === "enfermeria") && campoHorarioManual)
+    ? campoHorarioManual.value : "";
   const campoBackup = document.getElementById("campo-sillon-backup");
   const bloqueBackup = document.getElementById("bloque-sillon-backup");
   const soloBackup = !!(campoBackup && bloqueBackup && bloqueBackup.style.display !== "none" && campoBackup.checked);
@@ -2141,7 +2145,8 @@ async function guardarComoSobreturnoSoloBackup(datosBasicos) {
   await guardarTurnoConHueco(datosBasicos, hueco, TIPO_SOBRETURNO_SIN_DISPONIBILIDAD);
 }
 
-// --- Ronda "mejoras motor", Frente 2: horario manual (exclusivo administrador) ---
+// --- Ronda "mejoras motor", Frente 2: horario manual (administrador y enfermería desde
+// la Etapa 5C, punto 2.5) ---
 //
 // A diferencia de buscarYMostrarHuecos (que recorre hasta 10 días con buscarHuecos()),
 // este camino valida UN horario puntual con buscarSillonHorarioFijo() — pasa por encima
