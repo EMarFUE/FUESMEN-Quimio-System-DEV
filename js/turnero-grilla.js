@@ -1311,6 +1311,16 @@ async function abrirReasignarGrilla(turnoId) {
   document.getElementById("campo-fecha-reasignar-grilla").min = fechaLocalHoy();
   document.getElementById("campo-fecha-reasignar-grilla").max = fechaMaximaAnticipacionISO();
   document.getElementById("mensaje-reasignar-grilla").style.display = "none";
+
+  // Etapa 5C, punto 2.8 — horario exacto en Reasignar, solo administrador (a diferencia
+  // del horario manual de "+ nuevo turno", que desde la Etapa 5C punto 2.5 también es de
+  // enfermería). La sede NO se puede elegir a mano acá (decisión con Elías) — sigue la
+  // misma que ya tenía el turno, vía datosBasicos.sedeAutomatica/sedeId como siempre.
+  const esAdministradorReasignar = rolActualGrilla === "administrador";
+  document.getElementById("bloque-horario-manual-reasignar-grilla").style.display = esAdministradorReasignar ? "block" : "none";
+  document.getElementById("boton-horario-manual-reasignar-grilla").style.display = esAdministradorReasignar ? "block" : "none";
+  document.getElementById("campo-horario-manual-reasignar-grilla").value = "";
+
   turnoIdReasignarActual = turnoId;
   document.getElementById("overlay-reasignar-grilla").style.display = "flex";
 
@@ -1399,6 +1409,75 @@ async function buscarReasignarGrilla() {
   }
 }
 
+// Etapa 5C, punto 2.8 — horario exacto en Reasignar (solo administrador, ver el toggle
+// de visibilidad en abrirReasignarGrilla). Copia deliberada de buscarReasignarGrilla de
+// arriba en todo lo que arma datosBasicos/soloBackup (mismo criterio: la sede sigue
+// siendo la que ya tenía el turno, nunca se elige a mano acá), pero en vez de
+// buscarYMostrarHuecos (búsqueda de hasta 10 días) llama a buscarYGuardarConHorarioManual
+// (turnero-carga.js, ya usado por "+ nuevo turno" desde la ronda "mejoras motor" y por
+// enfermería desde la Etapa 5C punto 2.5), pasándole dónde mostrar sus mensajes y qué
+// botón deshabilitar — los propios de este modal, no los de "+ nuevo turno".
+async function buscarReasignarHorarioManualGrilla() {
+  const turno = turnosCacheGrilla.find(t => t.id === turnoIdReasignarActual);
+  if (!turno) {
+    mostrarMensajeReasignarGrilla("El turno ya no está disponible. Cerrá esta ventana y volvé a intentar.", "error");
+    return;
+  }
+  const fecha = document.getElementById("campo-fecha-reasignar-grilla").value;
+  if (!fecha) {
+    mostrarMensajeReasignarGrilla("Elegí la fecha.", "error");
+    return;
+  }
+  if (fecha > fechaMaximaAnticipacionISO()) {
+    mostrarMensajeReasignarGrilla(`No se puede reasignar con más de ${TOPE_DIAS_ANTICIPACION} días de anticipación.`, "error");
+    return;
+  }
+  const horarioManual = document.getElementById("campo-horario-manual-reasignar-grilla").value;
+  if (!horarioManual) {
+    mostrarMensajeReasignarGrilla("Completá el horario exacto, o usá \"Buscar disponibilidad\" si no importa la hora puntual.", "error");
+    return;
+  }
+
+  const datosBasicos = {
+    esMedicoOtro: turno.esMedicoOtro,
+    medicoId: turno.medicoId,
+    medicoNombre: turno.medicoNombre,
+    sedeId: turno.sedeId,
+    sedeNombre: turno.sedeNombre,
+    sedeAutomatica: turno.sedeAutomatica,
+    protocolos: turno.protocolos,
+    premedicacion: turno.premedicacion,
+    duracionTotalMinutos: turno.duracionTotalMinutos,
+    ciclo: turno.ciclo,
+    sesion: turno.sesion,
+    fecha,
+    diasSolicitados: null,
+    fechaCalculadaDesdeDias: false,
+    pacienteObraSocial: turno.paciente ? (turno.paciente.obraSocial || "") : "",
+    modoReasignar: true,
+    turnoIdParaReasignar: turno.id
+  };
+
+  // Mismo bug/mismo arreglo que ya documentado en buscarReasignarGrilla: si el sillón
+  // actual es backup, la búsqueda del horario exacto también se restringe a ese tipo.
+  const sedeDelTurno = sedesCacheCarga.find(s => s.id === turno.sedeId);
+  const sillonActualReasignar = sedeDelTurno
+    ? (sedeDelTurno.sillones || []).find(s => s.numero === turno.sillon)
+    : null;
+  const soloBackup = !!(sillonActualReasignar && sillonActualReasignar.tipo === "backup");
+
+  const boton = document.getElementById("boton-horario-manual-reasignar-grilla");
+  boton.disabled = true;
+  try {
+    await buscarYGuardarConHorarioManual(datosBasicos, horarioManual, soloBackup, {
+      mostrarMensaje: mostrarMensajeReasignarGrilla,
+      botonId: "boton-horario-manual-reasignar-grilla"
+    });
+  } finally {
+    boton.disabled = false;
+  }
+}
+
 // Retoma turnero-carga.js → guardarTurnoConHueco cuando modoReasignar está activo: en
 // vez de guardar directo, pide el motivo obligatorio (mismo modal que el arrastre).
 function abrirMotivoReasignarGrilla(datosBasicos, hueco, tipoSobreturno) {
@@ -1430,14 +1509,15 @@ function abrirMotivoReasignarGrilla(datosBasicos, hueco, tipoSobreturno) {
 // --- Modificar por formulario (Etapa T7, Fase 1) ---
 // A diferencia de Reasignar, acá la fecha y la hora de inicio NUNCA cambian — solo
 // sillón, médico, protocolo(s)/premedicación/duración, ciclo/sesión u obra social
-// (dato guardado en el turno, no la ficha del paciente). Interfaz propia, no comparte
-// campos con "+ nuevo turno" (decisión con Elías: la selección de protocolos de ese
-// formulario es una sola instancia con ids/variables globales fijos — reusarla ahí
-// significaba tocar ese formulario o duplicar la lógica; se eligió duplicar, así no se
-// arriesga nada de lo que ya funciona en "+ nuevo turno"). Si la nueva duración no entra
-// en el sillón elegido a esa hora, o el cambio de médico no pasa atadura/cupo, se avisa
-// y no se guarda nada — no ofrece buscar otro horario, para eso ya está "Reasignar"
-// (confirmado con Elías).
+// (dato guardado en el turno, no la ficha del paciente), y desde la Etapa 5C punto 2.8
+// también la sede, pero esa última solo para administrador (poblarSelectSedeModificar).
+// Interfaz propia, no comparte campos con "+ nuevo turno" (decisión con Elías: la
+// selección de protocolos de ese formulario es una sola instancia con ids/variables
+// globales fijos — reusarla ahí significaba tocar ese formulario o duplicar la lógica;
+// se eligió duplicar, así no se arriesga nada de lo que ya funciona en "+ nuevo turno").
+// Si la nueva duración no entra en el sillón elegido a esa hora, o el cambio de médico
+// no pasa atadura/cupo, se avisa y no se guarda nada — no ofrece buscar otro horario,
+// para eso ya está "Reasignar" (confirmado con Elías).
 
 let protocolosSeleccionadosModificar = {};
 let contadorFilasProtocoloModificar = 0;
@@ -1475,8 +1555,9 @@ async function abrirModificarGrilla(turnoId) {
     </div>
   `).join("");
 
+  poblarSelectSedeModificar(turno);
   poblarSelectMedicoModificar(turno);
-  poblarSelectSillonModificar(turno);
+  poblarSelectSillonModificar(turno.sedeId, turno.sillon);
 
   document.getElementById("lista-protocolos-modificar").innerHTML = "";
   protocolosSeleccionadosModificar = {};
@@ -1547,13 +1628,50 @@ function actualizarBloqueMedicoOtroModificar() {
   document.getElementById("bloque-medico-otro-modificar").style.display = esOtro ? "block" : "none";
 }
 
+// Etapa 5C, punto 2.8 — la sede se puede cambiar acá, pero solo administrador; mismo
+// criterio que poblarSelectMedicoModificar para el rol médico: un único option fijo con
+// la sede actual y select deshabilitado para el resto de los roles.
+function poblarSelectSedeModificar(turno) {
+  const select = document.getElementById("campo-sede-modificar");
+  select.innerHTML = "";
+
+  if (rolActualGrilla !== "administrador") {
+    const option = document.createElement("option");
+    option.value = turno.sedeId || "";
+    option.textContent = turno.sedeNombre || "-";
+    select.appendChild(option);
+    select.value = option.value;
+    select.disabled = true;
+    return;
+  }
+
+  sedesCacheCarga.forEach(s => {
+    const option = document.createElement("option");
+    option.value = s.id;
+    option.textContent = s.nombre;
+    select.appendChild(option);
+  });
+  select.disabled = false;
+  select.value = turno.sedeId || "";
+}
+
+// Al cambiar de sede el número de sillón deja de referirse al mismo recurso físico —
+// se resetea a "Sin asignar" y el administrador vuelve a elegir en la sede nueva
+// (decisión con Elías, Etapa 5C punto 2.8).
+function cambiarSedeModificar() {
+  const sedeId = document.getElementById("campo-sede-modificar").value;
+  poblarSelectSillonModificar(sedeId, null);
+}
+
 // A diferencia de "+ nuevo turno" (que asigna el sillón automáticamente y nunca deja
 // elegirlo a mano), acá SÍ se elige a mano — es una corrección puntual de un dato ya
-// cargado, no una búsqueda de disponibilidad.
-function poblarSelectSillonModificar(turno) {
+// cargado, no una búsqueda de disponibilidad. sedeId y sillonActual van separados (en vez
+// de recibir el turno entero) para poder repoblar al cambiar de sede sin depender del
+// turno original (Etapa 5C, punto 2.8 — ver cambiarSedeModificar).
+function poblarSelectSillonModificar(sedeId, sillonActual) {
   const select = document.getElementById("campo-sillon-modificar");
   select.innerHTML = '<option value="">Sin asignar (sobreturno)</option>';
-  const sedeDoc = sedesCacheCarga.find(s => s.id === turno.sedeId);
+  const sedeDoc = sedesCacheCarga.find(s => s.id === sedeId);
   const sillones = sedeDoc
     ? (sedeDoc.sillones || []).filter(s => s.tipo === "regular" || s.tipo === "backup")
     : [];
@@ -1563,7 +1681,7 @@ function poblarSelectSillonModificar(turno) {
     option.textContent = `Sillón ${s.numero}${s.tipo === "backup" ? " (backup)" : ""}`;
     select.appendChild(option);
   });
-  select.value = turno.sillon != null ? String(turno.sillon) : "";
+  select.value = sillonActual != null ? String(sillonActual) : "";
 }
 
 // --- Selección de protocolos — copia deliberada de agregarFilaProtocolo/
@@ -1735,6 +1853,14 @@ async function guardarModificacionGrilla() {
   const sillonValor = document.getElementById("campo-sillon-modificar").value;
   const sillon = sillonValor === "" ? null : Number(sillonValor);
 
+  // Etapa 5C, punto 2.8 — para el resto de los roles este select tiene un único option
+  // fijo con turno.sedeId (poblarSelectSedeModificar), así que sedeSeleccionadaId siempre
+  // coincide con turno.sedeId y sedeCambio da false: cero cambio de comportamiento para
+  // médico/enfermería/administrativo.
+  const sedeSeleccionadaId = document.getElementById("campo-sede-modificar").value;
+  const sedeCambio = sedeSeleccionadaId !== turno.sedeId;
+  const sedeDocSeleccionada = sedesCacheCarga.find(s => s.id === sedeSeleccionadaId);
+
   const protocolos = Object.values(protocolosSeleccionadosModificar).filter(p => p !== null);
   if (protocolos.length === 0) {
     mostrarMensajeModificarGrilla("Cargá al menos un protocolo válido.", "error");
@@ -1765,7 +1891,7 @@ async function guardarModificacionGrilla() {
   try {
     const validacion = validarModificacionTurno(
       esMedicoOtro ? null : medicoId,
-      turno.sedeId,
+      sedeSeleccionadaId,
       turno.fecha,
       horarioInicio,
       horarioFin,
@@ -1801,7 +1927,15 @@ async function guardarModificacionGrilla() {
       ciclo,
       sesion,
       horarioFin,
-      paciente: turno.paciente ? { ...turno.paciente, obraSocial: obraSocial || "" } : turno.paciente
+      paciente: turno.paciente ? { ...turno.paciente, obraSocial: obraSocial || "" } : turno.paciente,
+      // Etapa 5C, punto 2.8 — solo se agregan estos tres campos cuando la sede
+      // efectivamente cambió; si no, el turno nuevo hereda sedeId/sedeNombre/
+      // sedeAutomatica del original sin tocarlos (mismo comportamiento de siempre).
+      ...(sedeCambio ? {
+        sedeId: sedeSeleccionadaId,
+        sedeNombre: sedeDocSeleccionada ? sedeDocSeleccionada.nombre : sedeSeleccionadaId,
+        sedeAutomatica: false
+      } : {})
     }, "modificarFormulario", `Vas a modificar el turno de ${paciente}.`, "Confirmar modificación");
 
     document.getElementById("overlay-modificar-grilla").style.display = "none";

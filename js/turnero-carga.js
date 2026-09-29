@@ -2151,12 +2151,25 @@ async function guardarComoSobreturnoSoloBackup(datosBasicos) {
 // A diferencia de buscarYMostrarHuecos (que recorre hasta 10 días con buscarHuecos()),
 // este camino valida UN horario puntual con buscarSillonHorarioFijo() — pasa por encima
 // de atadura, cupo y franja horaria a propósito, pero nunca de sillón físicamente libre,
-// bloqueos vigentes ni el horario de la sede. No se usa nunca desde "Reasignar" (el
-// arrastre de grilla queda sin cambios, ver Handoff_planificacion_mejoras_motor_turnero.md).
-async function buscarYGuardarConHorarioManual(datosBasicos, horarioManualString, soloBackup) {
+// bloqueos vigentes ni el horario de la sede.
+//
+// Etapa 5C, punto 2.8: ahora SÍ se usa desde "Reasignar" (turnero-grilla.js,
+// buscarReasignarHorarioManualGrilla) además de "+ nuevo turno" — guardarTurnoConHueco
+// ya sabía redirigir a abrirMotivoReasignarGrilla cuando datosBasicos.modoReasignar es
+// true, así que el guardado en sí no necesitó tocarse. Lo que si hacía falta: esta
+// función tenía "#mensaje-general" y "#boton-guardar-turno" (los de "+ nuevo turno")
+// escritos a mano adentro — si Reasignar la llamaba tal cual, sus propios mensajes de
+// error (horario fuera de sede, bloqueado) aparecían en el formulario equivocado,
+// escondido, y quien reasigna no veía nada. El parámetro opcional "opciones" resuelve
+// esto: por defecto usa mostrarMensajeGeneral/"boton-guardar-turno" (cero cambio para
+// "+ nuevo turno", que no pasa el 4to argumento), y Reasignar pasa los suyos propios.
+async function buscarYGuardarConHorarioManual(datosBasicos, horarioManualString, soloBackup, opciones) {
+  const mostrarMensaje = (opciones && opciones.mostrarMensaje) || mostrarMensajeGeneral;
+  const botonId = (opciones && opciones.botonId) || "boton-guardar-turno";
+
   buscandoHuecos = true;
-  document.getElementById("boton-guardar-turno").disabled = true;
-  mostrarMensajeGeneral("Verificando el horario indicado…", "info");
+  document.getElementById(botonId).disabled = true;
+  mostrarMensaje("Verificando el horario indicado…", "info");
 
   try {
     const resultado = await buscarSillonHorarioFijo(
@@ -2179,27 +2192,27 @@ async function buscarYGuardarConHorarioManual(datosBasicos, horarioManualString,
     }
 
     if (resultado.motivo === "horarioFueraDeSede" || resultado.motivo === "sinSede") {
-      mostrarMensajeGeneral(
+      mostrarMensaje(
         "Ese horario queda fuera del horario de atención de la sede (o antes de que termine el turno). Elegí un horario dentro del horario de apertura y cierre.",
         "error"
       );
       buscandoHuecos = false;
-      document.getElementById("boton-guardar-turno").disabled = false;
+      document.getElementById(botonId).disabled = false;
       return;
     }
 
     // Feedback post-testeo (Etapa 2): ese horario cae sobre un bloqueo administrativo
     // vigente — corte total, mismo criterio que bloqueoPaciente en la búsqueda
     // automática: nunca se ofrece "cargar igual", para ningún rol (acá "horario manual"
-    // ya es exclusivo de administrador, así que no hay una versión más restringida que
-    // mostrarle a otro rol).
+    // ya es exclusivo de administrador/enfermería, así que no hay una versión más
+    // restringida que mostrarle a otro rol).
     if (resultado.motivo === "bloqueado") {
-      mostrarMensajeGeneral(
+      mostrarMensaje(
         `Ese horario está bloqueado${resultado.motivoBloqueo ? ` (${resultado.motivoBloqueo})` : ""}. No se puede cargar un turno ahí — elegí otro horario.`,
         "error"
       );
       buscandoHuecos = false;
-      document.getElementById("boton-guardar-turno").disabled = false;
+      document.getElementById(botonId).disabled = false;
       return;
     }
 
@@ -2207,17 +2220,18 @@ async function buscarYGuardarConHorarioManual(datosBasicos, horarioManualString,
     // ofrece el mismo modal de sobreturno de siempre, pero fijado a este horario puntual
     // en vez de calcular el próximo espacio libre del día (decisión del handoff de
     // planificación, Frente 2).
-    mostrarSobreturnoHorarioFijo(datosBasicos, horarioManualString, soloBackup);
+    mostrarSobreturnoHorarioFijo(datosBasicos, horarioManualString, soloBackup, opciones);
   } catch (error) {
     console.error("Error al validar el horario manual:", error);
-    mostrarMensajeGeneral(`Error en la búsqueda: ${error.message}`, "error");
+    mostrarMensaje(`Error en la búsqueda: ${error.message}`, "error");
   } finally {
     buscandoHuecos = false;
-    document.getElementById("boton-guardar-turno").disabled = false;
+    document.getElementById(botonId).disabled = false;
   }
 }
 
-function mostrarSobreturnoHorarioFijo(datosBasicos, horarioManualString, soloBackup) {
+function mostrarSobreturnoHorarioFijo(datosBasicos, horarioManualString, soloBackup, opciones) {
+  const mostrarMensaje = (opciones && opciones.mostrarMensaje) || mostrarMensajeGeneral;
   let modal = document.getElementById("modal-sobreturno");
   if (!modal) {
     modal = document.createElement("div");
@@ -2258,7 +2272,7 @@ function mostrarSobreturnoHorarioFijo(datosBasicos, horarioManualString, soloBac
   `;
 
   modal.style.display = "block";
-  mostrarMensajeGeneral("No se pudo cargar el turno como se pidió.", "error");
+  mostrarMensaje("No se pudo cargar el turno como se pidió.", "error");
 }
 
 // A diferencia de guardarComoSobreturnoSoloBackup (que busca el próximo espacio libre

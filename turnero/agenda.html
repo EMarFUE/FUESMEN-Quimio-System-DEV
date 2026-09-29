@@ -419,8 +419,19 @@
       <div id="resumen-reasignar-grilla" style="margin-bottom:14px;"></div>
       <label for="campo-fecha-reasignar-grilla" style="font-size:13px;color:var(--color-muted);">Buscar disponibilidad a partir de:</label>
       <input type="date" id="campo-fecha-reasignar-grilla" style="max-width:200px;display:block;margin-top:4px;" />
+
+      <!-- Etapa 5C, punto 2.8 — horario exacto, solo administrador (visibilidad la
+           decide abrirReasignarGrilla en turnero-grilla.js). La fecha de arriba sirve
+           para las dos cosas: fecha de referencia para la búsqueda automática, o fecha
+           exacta cuando además se completa este horario. -->
+      <div id="bloque-horario-manual-reasignar-grilla" class="campo" style="display:none;margin-top:10px;margin-bottom:0;">
+        <label for="campo-horario-manual-reasignar-grilla">Horario exacto (opcional, forzado)</label>
+        <input type="time" id="campo-horario-manual-reasignar-grilla" style="max-width:150px;" />
+      </div>
+
       <div id="mensaje-reasignar-grilla" class="mensaje-info" style="display:none;margin-top:10px;"></div>
       <button type="button" id="boton-buscar-reasignar-grilla" class="boton-principal" style="margin-top:14px;" onclick="buscarReasignarGrilla()">Buscar disponibilidad</button>
+      <button type="button" id="boton-horario-manual-reasignar-grilla" class="boton-secundario" style="display:none;margin-top:8px;width:100%;" onclick="buscarReasignarHorarioManualGrilla()">Cargar a la fecha y hora exactas</button>
     </div>
   </div>
 
@@ -436,7 +447,15 @@
       <h2 style="margin-top:0;font-size:17px;">Modificar turno</h2>
       <div id="resumen-modificar-grilla" style="margin-bottom:14px;"></div>
 
-      <div class="titulo-bloque">Médico tratante</div>
+      <!-- Etapa 5C, punto 2.8 — sede editable, solo administrador (poblarSelectSedeModificar
+           en turnero-grilla.js). Para el resto de los roles, un único option fijo y select
+           deshabilitado, mismo criterio que "Médico tratante" para el rol médico. -->
+      <div class="titulo-bloque">Sede</div>
+      <div class="campo" style="margin-bottom:0;">
+        <select id="campo-sede-modificar" onchange="cambiarSedeModificar()"></select>
+      </div>
+
+      <div class="titulo-bloque" style="margin-top:14px;">Médico tratante</div>
       <div class="campo" style="margin-bottom:0;">
         <select id="campo-medico-modificar" onchange="actualizarBloqueMedicoOtroModificar()"></select>
       </div>
