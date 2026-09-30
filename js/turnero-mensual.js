@@ -339,7 +339,9 @@ function armarTooltipTurnoMensual(turno, sede) {
     `${paciente.apellido || ""}, ${paciente.nombre || ""}`.trim() || "Sin paciente",
     turno.medicoNombre || "",
     `${turno.horarioInicio}–${turno.horarioFin}`,
-    turno.sillon != null ? `Sillón ${turno.sillon}${infoSillon && infoSillon.tipo === "backup" ? " (backup)" : ""}` : "Sobreturno sin sillón",
+    turno.internado
+      ? "Internado (no ocupa sillón)"
+      : (turno.sillon != null ? `Sillón ${turno.sillon}${infoSillon && infoSillon.tipo === "backup" ? " (backup)" : ""}` : "Sobreturno sin sillón"),
     (turno.ciclo != null || turno.sesion != null) ? `Ciclo ${turno.ciclo ?? "-"} · Sesión ${turno.sesion ?? "-"}` : null,
     paciente.numeroDocumento ? `DNI ${paciente.numeroDocumento}` : null,
     paciente.obraSocial || null,
@@ -353,7 +355,7 @@ function armarTooltipTurnoMensual(turno, sede) {
 
 function renderizarLineaTurnoMensual(turno, sede) {
   return `
-    <button type="button" class="turno-mensual" data-turno-id="${escaparHtmlMensual(turno.id)}"
+    <button type="button" class="turno-mensual ${turno.internado ? "internado-mensual" : ""}" data-turno-id="${escaparHtmlMensual(turno.id)}"
       title="${escaparHtmlMensual(armarTooltipTurnoMensual(turno, sede))}"
       onclick="abrirDetalleMensual('${escaparHtmlMensual(turno.id)}')">
       <span class="hora-turno-mensual">${escaparHtmlMensual(turno.horarioInicio)}</span>
@@ -448,10 +450,14 @@ function abrirDetalleMensual(turnoId) {
   // más los datos de la Etapa 4 en texto: prioridad, presente y cantidad de comentarios.
   const filas = [
     ["Paciente", paciente],
-    ["Sillón", turno.sillon != null ? `${turno.sillon}${esBackup ? " (backup)" : ""}` : "Sin asignar (sobreturno)"],
+    ["Sillón", turno.internado
+      ? "No aplica (internado)"
+      : (turno.sillon != null ? `${turno.sillon}${esBackup ? " (backup)" : ""}` : "Sin asignar (sobreturno)")],
     ["Horario", `${turno.horarioInicio || "-"} – ${turno.horarioFin || "-"}`],
     ["Fecha", turno.fecha || "-"],
     ["Médico", turno.medicoNombre || "-"],
+    // Etapa 5C, punto 2.1 — mismo criterio que abrirDetalleTurnoGrilla.
+    ...(turno.internado ? [["Internado", "Sí — no ocupa sillón, no imprime comprobante"]] : []),
     // Etapa 5C, punto 2.6 — mismo criterio que abrirDetalleTurnoGrilla: siempre
     // visibles, "-" si falta el dato, sin fila de premedicación (ver ese archivo).
     ["Protocolo(s)", (turno.protocolos || []).map((p) => (p && p.nombre) || p).join(", ") || "-"],

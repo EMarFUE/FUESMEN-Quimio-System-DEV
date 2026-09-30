@@ -1074,6 +1074,18 @@ function actualizarVisibilidadCamposEspeciales() {
     if (campoHorarioManual) campoHorarioManual.value = "";
   }
 
+  // Etapa 5C, punto 2.1 — mismo rol que horario manual. Al tildar "Internado" (ver
+  // alternarInternado), el horario manual pasa a ser obligatorio y deja de buscar
+  // sillón — por eso comparten exactamente el mismo gateo de rol acá.
+  const bloqueInternado = document.getElementById("bloque-internado");
+  if (bloqueInternado) {
+    bloqueInternado.style.display = puedeHorarioManual ? "block" : "none";
+    if (!puedeHorarioManual) {
+      const campoInternado = document.getElementById("campo-internado");
+      if (campoInternado) campoInternado.checked = false;
+    }
+  }
+
   // Etapa 4, punto 8 — semáforo de prioridad: visible/editable solo médico y administrador.
   const bloquePrioridad = document.getElementById("bloque-prioridad-turno");
   if (bloquePrioridad) {
@@ -1094,6 +1106,27 @@ function actualizarVisibilidadCamposEspeciales() {
   if (!puedeBackup) {
     const campoBackup = document.getElementById("campo-sillon-backup");
     if (campoBackup) campoBackup.checked = false;
+  }
+}
+
+// Etapa 5C, punto 2.1 — al tildar "Internado": el horario manual pasa a obligatorio
+// (por eso se fuerza visible acá, aunque actualizarVisibilidadCamposEspeciales ya lo
+// muestre para estos mismos roles — no hace daño repetirlo) y el checkbox de sillón
+// backup deja de tener sentido (un internado nunca ocupa ningún sillón, ni siquiera el
+// de inyectables) — se oculta y se destilda. Al destildar "Internado", se restaura el
+// estado normal llamando de nuevo a actualizarVisibilidadCamposEspeciales().
+function alternarInternado() {
+  const tildado = document.getElementById("campo-internado").checked;
+  const bloqueHorarioManual = document.getElementById("bloque-horario-manual");
+  const bloqueBackup = document.getElementById("bloque-sillon-backup");
+
+  if (tildado) {
+    bloqueHorarioManual.style.display = "block";
+    bloqueBackup.style.display = "none";
+    const campoBackup = document.getElementById("campo-sillon-backup");
+    if (campoBackup) campoBackup.checked = false;
+  } else {
+    actualizarVisibilidadCamposEspeciales();
   }
 }
 
@@ -1263,6 +1296,25 @@ async function intentarGuardarTurno() {
   const campoBackup = document.getElementById("campo-sillon-backup");
   const bloqueBackup = document.getElementById("bloque-sillon-backup");
   const soloBackup = !!(campoBackup && bloqueBackup && bloqueBackup.style.display !== "none" && campoBackup.checked);
+
+  // Etapa 5C, punto 2.1 — turno de internado: nunca busca sillón (ni siquiera backup),
+  // nunca evalúa atadura/cupo/franja, nunca pasa por buscarHuecos ni
+  // buscarSillonHorarioFijo. El horario manual de arriba es OBLIGATORIO acá (a
+  // diferencia del Frente 2 normal, donde es opcional) porque es el único dato que le
+  // dice al sistema a qué hora arranca el tratamiento.
+  const campoInternado = document.getElementById("campo-internado");
+  const esInternado = !!(campoInternado
+    && (rolActualCarga === "administrador" || rolActualCarga === "enfermeria")
+    && campoInternado.checked);
+
+  if (esInternado) {
+    if (!horarioManual) {
+      mostrarMensajeGeneral("Para un turno de internado, cargá el horario en que arranca el tratamiento.", "error");
+      return;
+    }
+    await guardarTurnoInternado(datosBasicos, horarioManual);
+    return;
+  }
 
   if (horarioManual) {
     // Frente 2: horario fijado a mano, pasa por encima de atadura/cupo/franja. Si
@@ -2163,6 +2215,41 @@ async function guardarComoSobreturnoSoloBackup(datosBasicos) {
 // escondido, y quien reasigna no veía nada. El parámetro opcional "opciones" resuelve
 // esto: por defecto usa mostrarMensajeGeneral/"boton-guardar-turno" (cero cambio para
 // "+ nuevo turno", que no pasa el 4to argumento), y Reasignar pasa los suyos propios.
+// Etapa 5C, punto 2.1 — a diferencia de buscarYGuardarConHorarioManual (que SÍ intenta
+// encontrar un sillón físico libre a esa hora, y recién si no hay ofrece sobreturno),
+// acá nunca se intenta: un internado no ocupa sillón nunca, por más que a esa hora haya
+// uno libre. Se arma un "hueco" a mano (sillon: null) y se reutiliza
+// guardarTurnoConHueco tal cual, igual que ya hace guardarComoSobreturnoHorarioFijo,
+// incluida la resolución de sede para Occhipinti (determinarSedesABuscar) porque acá
+// tampoco pasa por el motor que la resolvería de otra forma.
+async function guardarTurnoInternado(datosBasicos, horarioManualString) {
+  let sedeId = datosBasicos.sedeId;
+  let sedeNombre = datosBasicos.sedeNombre;
+
+  if (datosBasicos.medicoId === MEDICO_OCCHIPINTI_ID) {
+    const sedesCandidatas = await determinarSedesABuscar(
+      MEDICO_OCCHIPINTI_ID,
+      datosBasicos.pacienteObraSocial || "",
+      medicosCacheCarga
+    );
+    sedeId = sedesCandidatas[0];
+    const sedeDoc = sedesCacheCarga.find((s) => s.id === sedeId);
+    sedeNombre = sedeDoc ? sedeDoc.nombre : sedeId;
+  }
+
+  const horaFinString = stringDesdeMinuto(minutoDesdeString(horarioManualString) + datosBasicos.duracionTotalMinutos);
+  const hueco = {
+    sedeId,
+    sedeNombre,
+    fecha: datosBasicos.fecha,
+    fechaLegible: formatearFechaLegible(new Date(datosBasicos.fecha + "T00:00:00")),
+    horaInicio: horarioManualString,
+    horaFin: horaFinString,
+    sillon: null
+  };
+  await guardarTurnoConHueco({ ...datosBasicos, internado: true }, hueco, null);
+}
+
 async function buscarYGuardarConHorarioManual(datosBasicos, horarioManualString, soloBackup, opciones) {
   const mostrarMensaje = (opciones && opciones.mostrarMensaje) || mostrarMensajeGeneral;
   const botonId = (opciones && opciones.botonId) || "boton-guardar-turno";
@@ -2381,6 +2468,9 @@ async function guardarTurnoConHueco(datosBasicos, hueco, tipoSobreturno, cambios
       // creación — no hace falta pasar por esa regla de "+1/-1" para el caso inicial,
       // ya viene resuelto en el mismo batch de abajo.
       cantidadNotas: datosBasicos.notaInicial ? 1 : 0,
+      // Etapa 5C, punto 2.1 — solo se agrega cuando corresponde; el resto de los turnos
+      // no lleva este campo en absoluto (no hace falta "internado: false" en cada uno).
+      ...(datosBasicos.internado ? { internado: true } : {}),
       // Standard
       estado: "activo",
       creadoPor: { uid: usuarioActualCarga.uid, nombre: datosUsuarioActualCarga.nombre || usuarioActualCarga.email },
@@ -2390,12 +2480,19 @@ async function guardarTurnoConHueco(datosBasicos, hueco, tipoSobreturno, cambios
     // Etapa T8: mismo mecanismo que guardarEntrega() en entregas.js — el turno y el
     // incremento del contador van en el mismo batch; el número real recién se lee (y se
     // escribe en el turno) después del commit.
+    //
+    // Etapa 5C, punto 2.1: un internado NUNCA imprime comprobante (decisión con Elías),
+    // así que tampoco consume un número — se salta el contador entero, no solo la
+    // impresión.
+    const esInternado = datosBasicos.internado === true;
     const turnoRef = db.collection("turnos").doc();
     const batch = db.batch();
     const anio = new Date().getFullYear().toString();
     const contadorRef = db.collection("contadores").doc("comprobantesTurno");
     batch.set(turnoRef, docTurno);
-    batch.set(contadorRef, { [anio]: firebase.firestore.FieldValue.increment(1) }, { merge: true });
+    if (!esInternado) {
+      batch.set(contadorRef, { [anio]: firebase.firestore.FieldValue.increment(1) }, { merge: true });
+    }
 
     // Etapa 4, punto 9 — nota inicial opcional (bloque colapsado del modal de carga). Va
     // en el mismo batch que el turno: el "create" de una nota no depende de que el
@@ -2430,14 +2527,19 @@ async function guardarTurnoConHueco(datosBasicos, hueco, tipoSobreturno, cambios
 
     await batch.commit();
 
-    const contadorSnap = await contadorRef.get();
-    const numeroCorrelativo = contadorSnap.data()[anio];
-    const numeroComprobante = formatearNumeroComprobanteTurno(anio, numeroCorrelativo);
-    await turnoRef.update({ numeroComprobante });
+    if (esInternado) {
+      mostrarMensajeGeneral("Turno de internado guardado correctamente.", "exito");
+      resetearFormularioCarga();
+    } else {
+      const contadorSnap = await contadorRef.get();
+      const numeroCorrelativo = contadorSnap.data()[anio];
+      const numeroComprobante = formatearNumeroComprobanteTurno(anio, numeroCorrelativo);
+      await turnoRef.update({ numeroComprobante });
 
-    mostrarMensajeGeneral("Turno guardado correctamente. Abriendo comprobante…", "exito");
-    resetearFormularioCarga();
-    abrirComprobanteTurno(turnoRef.id);
+      mostrarMensajeGeneral("Turno guardado correctamente. Abriendo comprobante…", "exito");
+      resetearFormularioCarga();
+      abrirComprobanteTurno(turnoRef.id);
+    }
     setTimeout(() => {
       document.getElementById("mensaje-general").style.display = "none";
     }, 4000);
@@ -2475,6 +2577,11 @@ function resetearFormularioCarga() {
   if (campoHorarioManual) campoHorarioManual.value = "";
   const campoBackup = document.getElementById("campo-sillon-backup");
   if (campoBackup) campoBackup.checked = false;
+
+  // Etapa 5C, punto 2.1 — mismo motivo que horario manual/backup arriba: sin este
+  // reset, "Internado" quedaba tildado en el siguiente turno.
+  const campoInternado = document.getElementById("campo-internado");
+  if (campoInternado) campoInternado.checked = false;
 
   // Etapa 4, punto 8 — mismo motivo que el bug de horario manual/backup de arriba: sin
   // este reset, la prioridad del turno anterior quedaba pisada en el siguiente.
