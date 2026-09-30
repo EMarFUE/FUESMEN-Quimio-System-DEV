@@ -2278,7 +2278,11 @@ async function buscarYGuardarConHorarioManual(datosBasicos, horarioManualString,
       turnosExistentes,
       datosBasicos.sedeAutomatica ? null : datosBasicos.sedeId,
       bloqueosCacheCarga,
-      soloBackup
+      soloBackup,
+      // Etapa 5C, bug de Reasignar con horario exacto: sin esto el turno que se está
+      // reasignando se contaba a sí mismo como ocupando su sillón. undefined en un alta
+      // nueva (datosBasicos no trae turnoIdParaReasignar), sin ningún cambio para ese caso.
+      datosBasicos.turnoIdParaReasignar
     );
 
     if (resultado.exito) {

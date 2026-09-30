@@ -1343,7 +1343,11 @@ function validarModificacionTurno(
 async function buscarSillonHorarioFijo(
   medicoId, obraSocialPaciente, duracionMinutos, fechaISOFija, horaInicioString,
   medicosCacheLectura, sedesCacheLectura, turnosExistentes, sedeIdManual,
-  bloqueosCacheLectura, soloBackup
+  bloqueosCacheLectura, soloBackup,
+  turnoIdExcluir // opcional (Etapa 5C, bug de Reasignar con horario exacto): id del propio
+                 // turno que se está reasignando — nunca debe contar como ocupando su
+                 // propio sillón. undefined en un alta nueva (no hay turno propio todavía),
+                 // así que "+ nuevo turno" se comporta exactamente igual que antes.
 ) {
   try {
     const sedesABuscar = sedeIdManual
@@ -1387,7 +1391,8 @@ async function buscarSillonHorarioFijo(
 
       const turnosDelDiaReales = turnosExistentes.filter(t =>
         t.sedeId === sedeId && t.fecha === fechaISOFija &&
-        typeof t.horarioInicio === "string" && typeof t.horarioFin === "string"
+        typeof t.horarioInicio === "string" && typeof t.horarioFin === "string" &&
+        !(turnoIdExcluir && t.id === turnoIdExcluir) // el propio turno no choca contra sí mismo
       );
       const pseudoTurnosBloqueo = bloqueosCacheLectura
         ? pseudoTurnosBloqueoEnFecha(
