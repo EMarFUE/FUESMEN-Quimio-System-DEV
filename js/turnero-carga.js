@@ -2528,7 +2528,16 @@ async function guardarTurnoConHueco(datosBasicos, hueco, tipoSobreturno, cambios
     await batch.commit();
 
     if (esInternado) {
-      mostrarMensajeGeneral("Turno de internado guardado correctamente.", "exito");
+      // Elías reportó dos cosas que en realidad son la misma causa: (a) no hay una
+      // notificación clara de que se guardó, (b) el modal "+ nuevo turno" no se cierra
+      // solo como con cualquier otro turno. La razón: observarGuardadoTurnoGrilla() (en
+      // turnero-grilla.js) mira este mismo mensaje con
+      // startsWith("Turno guardado correctamente.") para cerrar el modal a los 900ms —
+      // "Turno DE INTERNADO guardado..." no matcheaba ese prefijo, así que nunca
+      // disparaba el cierre. No hace falta un pop-up nuevo: alcanza con que el mensaje
+      // empiece igual que el de siempre (el cartel que se desvanece solo, más el modal
+      // cerrándose a los 900ms, ya es la notificación que pidió).
+      mostrarMensajeGeneral("Turno guardado correctamente. No se generó comprobante: es un turno de internado.", "exito");
       resetearFormularioCarga();
     } else {
       const contadorSnap = await contadorRef.get();

@@ -578,14 +578,12 @@ function puedeEditarTurnoGrilla(turno) {
 }
 
 function puedeArrastrarTurnoGrilla(turno) {
-  // Etapa 5C, punto 2.1 — el arrastre calcula el destino buscando un sillón físico
-  // libre en el punto donde se suelta; un internado no tiene ningún sillón que buscar,
-  // así que arrastrarlo no tiene destino válido posible. Para corregir médico/sede/
-  // protocolos de un internado ya cargado, usar "Modificar" (que si sabe de internado,
-  // ver poblarSelectSillonModificar/guardarModificacionGrilla). Cambiar el día o el
-  // horario de un internado ya cargado queda pendiente para una próxima ronda —
-  // "Reasignar" todavía no contempla este caso.
-  if (turno.internado) return false;
+  // Etapa 5C, punto 2.1 — el arrastre de un internado no busca ningún sillón físico (ver
+  // armarArrastreGrilla/actualizarCandidatoArrastreGrilla, que lo tratan aparte); mismo
+  // criterio de rol que quién puede cargarlo (administrador/enfermería): un médico no
+  // puede arrastrar un internado ni siquiera si es el suyo propio, a diferencia de un
+  // turno común.
+  if (turno.internado) return rolActualGrilla === "administrador" || rolActualGrilla === "enfermeria";
   return puedeEditarTurnoGrilla(turno);
 }
 
@@ -1019,6 +1017,24 @@ async function moverArrastreGrilla(evento) {
 async function armarArrastreGrilla(estado) {
   const turno = estado.turno;
   const sede = sedesCacheGrilla.find(s => s.id === sedeSeleccionadaGrilla);
+
+  // Etapa 5C, punto 2.1 — un internado nunca busca sillón: no hay pool de sillones que
+  // armar, ni atadura/cupo/franja/un-turno-por-día que evaluar, así que se salta toda la
+  // búsqueda de la semana (buscarHuecosSemanaEnSede) — sería trabajo desperdiciado y
+  // además el resultado no se iba a usar (ver actualizarCandidatoArrastreGrilla, que
+  // para este caso arma el candidato directo desde dónde se suelta, sin consultar
+  // huecosSemana). estado.esInternado lo lee esa función para tomar ese otro camino.
+  estado.esInternado = turno.internado === true;
+  if (estado.esInternado) {
+    estado.huecosSemana = {};
+    estado.elementoTarjeta.classList.add("arrastrando-grilla");
+    estado.elementoGhost = document.createElement("div");
+    estado.elementoGhost.className = "indicador-drop-grilla invalido-grilla";
+    estado.elementoGhost.style.height = "20px"; // misma ALTURA_FIJA_INTERNADO_GRILLA que renderizarTarjetaTurnoGrilla
+    estado.elementoGhost.style.display = "none";
+    document.body.appendChild(estado.elementoGhost);
+    return;
+  }
   // Etapa 2, punto 4: antes se filtraba siempre a "regular", sin mirar de qué tipo era
   // el sillón del turno que se está arrastrando — un turno cargado en el puesto para
   // inyectables (backup) terminaba compitiendo por sillones regulares. Ahora el pool de
@@ -1115,6 +1131,35 @@ function actualizarCandidatoArrastreGrilla(estado, evento) {
   const minutoRedondeado = Math.round(minutoCrudo / 15) * 15; // redondeo a 15 minutos
 
   const fechaISOCandidata = pista.dataset.fecha;
+
+  // Etapa 5C, punto 2.1 — un internado no tiene sillón que buscar: el candidato es
+  // directamente el punto donde se soltó (redondeado a 15 min), siempre válido, sin
+  // consultar estado.huecosSemana (que para este caso quedó vacío a propósito en
+  // armarArrastreGrilla). Nunca queda "inválido-grilla": no hay franja horaria de la
+  // sede que lo pueda bloquear (mismo criterio que el resto de internado).
+  if (estado.esInternado) {
+    const horaInicio = stringDesdeMinuto(minutoRedondeado);
+    const horaFin = stringDesdeMinuto(minutoRedondeado + estado.turno.duracionTotalMinutos);
+    const hueco = {
+      fecha: fechaISOCandidata,
+      fechaLegible: formatearFechaLegible(new Date(fechaISOCandidata + "T00:00:00")),
+      horaInicio, horaFin,
+      sillon: null,
+      sedeId: sede.id,
+      sedeNombre: sede.nombre
+    };
+    estado.candidatoActual = { fechaISO: fechaISOCandidata, hueco };
+    if (estado.elementoGhost.parentElement !== pista) {
+      pista.appendChild(estado.elementoGhost);
+    }
+    estado.elementoGhost.style.top = `${(minutoRedondeado - minutoApertura) * PIXELES_POR_MINUTO_GRILLA}px`;
+    estado.elementoGhost.style.display = "flex";
+    estado.elementoGhost.classList.remove("invalido-grilla");
+    estado.elementoGhost.classList.add("valido-grilla");
+    estado.elementoGhost.textContent = `${horaInicio}–${horaFin} (internado)`;
+    return;
+  }
+
   const resultadoDia = estado.huecosSemana[fechaISOCandidata];
   const hueco = resultadoDia && resultadoDia.atiende
     ? resultadoDia.huecos.find(h => h.minutoInicioBloqueNormalizado === minutoRedondeado)
@@ -1205,7 +1250,9 @@ function confirmarArrastreGrilla(turno, candidato) {
     // (Occhipinti) el motor puede haber elegido la otra sede.
     sedeId: hueco.sedeId,
     sedeNombre: hueco.sedeNombre,
-    tipoSobreturno: null // un hueco de la grilla semanal siempre es un sillón físico real
+    tipoSobreturno: null // un hueco de la grilla semanal es un sillón físico real, salvo
+    // cuando es el candidato armado para un internado (sillon: null a propósito, ver
+    // actualizarCandidatoArrastreGrilla) — tipoSobreturno sigue en null en los dos casos
   }, "arrastre", `Vas a mover el turno de ${paciente} a ${hueco.fechaLegible || hueco.fecha}, ${hueco.horaInicio}hs.`, "Confirmar reasignación");
 }
 
@@ -1274,14 +1321,23 @@ async function confirmarMotivoArrastreGrilla() {
       document.getElementById("overlay-modificar-grilla").style.display = "none";
       turnoIdModificarActual = null;
     }
-    const mensajeExito = tipoAccion === "modificado" ? "Turno modificado correctamente. Abriendo comprobante…"
-      : tipoAccion === "cancelado" ? "Turno eliminado correctamente."
-      : "Turno reasignado correctamente. Abriendo comprobante…";
+    // Etapa 5C, punto 2.1 — mismo criterio que arriba: si el resultado es internado, ni
+    // se generó numeroComprobante ni hay nada que abrir. camposNuevos.internado pisa si
+    // corresponde (no debería pasar hoy, no hay forma de tildar/destildar internado
+    // desde Modificar), si no se hereda del turno original.
+    const esInternado = (camposNuevos.internado !== undefined ? camposNuevos.internado : turno.internado) === true;
+    const mensajeExito = esInternado
+      ? (tipoAccion === "modificado" ? "Turno de internado modificado correctamente."
+        : tipoAccion === "cancelado" ? "Turno eliminado correctamente."
+        : "Turno de internado reasignado correctamente.")
+      : (tipoAccion === "modificado" ? "Turno modificado correctamente. Abriendo comprobante…"
+        : tipoAccion === "cancelado" ? "Turno eliminado correctamente."
+        : "Turno reasignado correctamente. Abriendo comprobante…");
     mostrarMensajeAgenda(mensajeExito, "exito");
     // Etapa T8: nuevoTurnoId es null en "cancelado" (no hay turno de reemplazo al que
     // emitirle comprobante) — abrirComprobanteTurno() está definida en turnero-carga.js,
     // que se carga antes que este archivo en agenda.html.
-    if (nuevoTurnoId) abrirComprobanteTurno(nuevoTurnoId);
+    if (nuevoTurnoId && !esInternado) abrirComprobanteTurno(nuevoTurnoId);
     await cargarYRenderizarGrilla();
   } catch (error) {
     console.error("Error al guardar el cambio del turno:", error);
@@ -1340,14 +1396,28 @@ async function abrirReasignarGrilla(turnoId) {
   document.getElementById("campo-fecha-reasignar-grilla").max = fechaMaximaAnticipacionISO();
   document.getElementById("mensaje-reasignar-grilla").style.display = "none";
 
-  // Etapa 5C, punto 2.8 — horario exacto en Reasignar, solo administrador (a diferencia
-  // del horario manual de "+ nuevo turno", que desde la Etapa 5C punto 2.5 también es de
-  // enfermería). La sede NO se puede elegir a mano acá (decisión con Elías) — sigue la
-  // misma que ya tenía el turno, vía datosBasicos.sedeAutomatica/sedeId como siempre.
-  const esAdministradorReasignar = rolActualGrilla === "administrador";
-  document.getElementById("bloque-horario-manual-reasignar-grilla").style.display = esAdministradorReasignar ? "block" : "none";
-  document.getElementById("boton-horario-manual-reasignar-grilla").style.display = esAdministradorReasignar ? "block" : "none";
+  // Etapa 5C, punto 2.8 — horario exacto en Reasignar: caso general, solo administrador
+  // (a diferencia del horario manual de "+ nuevo turno", que desde la Etapa 5C punto 2.5
+  // también es de enfermería). La sede NO se puede elegir a mano acá (decisión con
+  // Elías) — sigue la misma que ya tenía el turno, vía datosBasicos.sedeAutomatica/
+  // sedeId como siempre.
+  //
+  // Etapa 5C, punto 2.1 (ampliación) — para un internado es distinto en dos sentidos:
+  // (a) es la ÚNICA forma de reasignar, porque nunca busca sillón — "Buscar
+  // disponibilidad" se oculta entero, no tiene nada que ofrecer; (b) el rol es
+  // administrador O enfermería, mismo criterio que quién puede cargarlo (no solo
+  // administrador, como en el caso general).
+  const esInternadoReasignar = turno.internado === true;
+  const puedeHorarioExactoReasignar = esInternadoReasignar
+    ? (rolActualGrilla === "administrador" || rolActualGrilla === "enfermeria")
+    : rolActualGrilla === "administrador";
+  document.getElementById("bloque-horario-manual-reasignar-grilla").style.display = puedeHorarioExactoReasignar ? "block" : "none";
+  document.getElementById("boton-horario-manual-reasignar-grilla").style.display = puedeHorarioExactoReasignar ? "block" : "none";
   document.getElementById("campo-horario-manual-reasignar-grilla").value = "";
+  document.getElementById("boton-buscar-reasignar-grilla").style.display = esInternadoReasignar ? "none" : "block";
+  document.getElementById("etiqueta-fecha-reasignar-grilla").textContent = esInternadoReasignar
+    ? "Nueva fecha:"
+    : "Buscar disponibilidad a partir de:";
 
   turnoIdReasignarActual = turnoId;
   document.getElementById("overlay-reasignar-grilla").style.display = "flex";
@@ -1466,6 +1536,7 @@ async function buscarReasignarHorarioManualGrilla() {
     return;
   }
 
+  const esInternado = turno.internado === true;
   const datosBasicos = {
     esMedicoOtro: turno.esMedicoOtro,
     medicoId: turno.medicoId,
@@ -1486,17 +1557,26 @@ async function buscarReasignarHorarioManualGrilla() {
     turnoIdParaReasignar: turno.id
   };
 
-  // Mismo bug/mismo arreglo que ya documentado en buscarReasignarGrilla: si el sillón
-  // actual es backup, la búsqueda del horario exacto también se restringe a ese tipo.
-  const sedeDelTurno = sedesCacheCarga.find(s => s.id === turno.sedeId);
-  const sillonActualReasignar = sedeDelTurno
-    ? (sedeDelTurno.sillones || []).find(s => s.numero === turno.sillon)
-    : null;
-  const soloBackup = !!(sillonActualReasignar && sillonActualReasignar.tipo === "backup");
-
   const boton = document.getElementById("boton-horario-manual-reasignar-grilla");
   boton.disabled = true;
   try {
+    if (esInternado) {
+      // Etapa 5C, punto 2.1 (ampliación) — igual que al crearlo: nunca busca sillón,
+      // nunca evalúa atadura/cupo/franja. guardarTurnoInternado ya sabe de
+      // datosBasicos.modoReasignar (lo hereda de guardarTurnoConHueco, sin tocar nada
+      // ahí) y arma "internado: true" solo — no hace falta agregarlo acá.
+      await guardarTurnoInternado(datosBasicos, horarioManual);
+      return;
+    }
+
+    // Mismo bug/mismo arreglo que ya documentado en buscarReasignarGrilla: si el sillón
+    // actual es backup, la búsqueda del horario exacto también se restringe a ese tipo.
+    const sedeDelTurno = sedesCacheCarga.find(s => s.id === turno.sedeId);
+    const sillonActualReasignar = sedeDelTurno
+      ? (sedeDelTurno.sillones || []).find(s => s.numero === turno.sillon)
+      : null;
+    const soloBackup = !!(sillonActualReasignar && sillonActualReasignar.tipo === "backup");
+
     await buscarYGuardarConHorarioManual(datosBasicos, horarioManual, soloBackup, {
       mostrarMensaje: mostrarMensajeReasignarGrilla,
       botonId: "boton-horario-manual-reasignar-grilla"
@@ -2538,13 +2618,27 @@ async function anularYCrearTurnoGrilla(turnoOriginal, camposNuevos, motivo, tipo
 
   datosAnulacion.turnoNuevoId = nuevoRef.id;
 
+  // Etapa 5C, punto 2.1 — bug encontrado al agregar drag/Reasignar para internado: esta
+  // función SIEMPRE generaba numeroComprobante para el turno nuevo, sin mirar si es
+  // internado. docNuevo.internado ya refleja lo que va a quedar (camposNuevos lo pisa si
+  // corresponde, si no se hereda del original vía el loop de copia de arriba) — mismo
+  // criterio que guardarTurnoConHueco en turnero-carga.js: ningún internado genera
+  // comprobante, nunca, ni al crearse ni al anularse-y-recrearse.
+  const esInternado = docNuevo.internado === true;
+
   const batch = db.batch();
   const anio = new Date().getFullYear().toString();
   const contadorRef = db.collection("contadores").doc("comprobantesTurno");
   batch.set(nuevoRef, docNuevo);
   batch.update(db.collection("turnos").doc(turnoOriginal.id), datosAnulacion);
-  batch.set(contadorRef, { [anio]: firebase.firestore.FieldValue.increment(1) }, { merge: true });
+  if (!esInternado) {
+    batch.set(contadorRef, { [anio]: firebase.firestore.FieldValue.increment(1) }, { merge: true });
+  }
   await batch.commit();
+
+  if (esInternado) {
+    return nuevoRef.id;
+  }
 
   // Etapa T8: número de comprobante del turno nuevo, recién después del commit (mismo
   // motivo que en guardarTurnoConHueco(), turnero-carga.js). Con eso ya se puede además
@@ -2677,10 +2771,12 @@ function abrirDetalleTurnoGrilla(turnoId) {
     <button type="button" class="boton-icono" title="Reimprimir comprobante" aria-label="Reimprimir comprobante" onclick="abrirComprobanteTurno('${turno.id}')">
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
     </button>`;
-  // Etapa 5C, punto 2.1 — Modificar y Eliminar sí soportan internado (ver
-  // puedeEditarTurnoGrilla); Reasignar todavía no (ver puedeArrastrarTurnoGrilla).
+  // Etapa 5C, punto 2.1 — Modificar y Eliminar siguen con el permiso general
+  // (puedeEditarTurnoGrilla); Reasignar reutiliza puedeArrastrarTurnoGrilla porque ya
+  // tiene exactamente el criterio que hace falta acá (internado: solo administrador o
+  // enfermería, ni médico con lo suyo propio; turno común: el permiso de siempre).
   const botonesEdicionHtml = puedeEditarTurnoGrilla(turno)
-    ? `${turno.internado ? "" : `<button type="button" class="boton-principal" style="width:auto;" onclick="abrirReasignarGrilla('${turno.id}')">Reasignar</button>`}
+    ? `${puedeArrastrarTurnoGrilla(turno) ? `<button type="button" class="boton-principal" style="width:auto;" onclick="abrirReasignarGrilla('${turno.id}')">Reasignar</button>` : ""}
        <button type="button" class="boton-secundario" style="width:auto;" onclick="abrirModificarGrilla('${turno.id}')">Modificar</button>
        <button type="button" class="boton-secundario" style="width:auto;color:var(--color-danger);border-color:var(--color-danger);" onclick="abrirEliminarGrilla('${turno.id}')">Eliminar</button>`
     : "";
