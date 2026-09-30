@@ -1553,6 +1553,7 @@ async function buscarReasignarHorarioManualGrilla() {
     diasSolicitados: null,
     fechaCalculadaDesdeDias: false,
     pacienteObraSocial: turno.paciente ? (turno.paciente.obraSocial || "") : "",
+    pacienteId: turno.paciente ? turno.paciente.id : null, // Etapa 5C: regla "un turno por día"
     modoReasignar: true,
     turnoIdParaReasignar: turno.id
   };

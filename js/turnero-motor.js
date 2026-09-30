@@ -1344,12 +1344,24 @@ async function buscarSillonHorarioFijo(
   medicoId, obraSocialPaciente, duracionMinutos, fechaISOFija, horaInicioString,
   medicosCacheLectura, sedesCacheLectura, turnosExistentes, sedeIdManual,
   bloqueosCacheLectura, soloBackup,
-  turnoIdExcluir // opcional (Etapa 5C, bug de Reasignar con horario exacto): id del propio
-                 // turno que se está reasignando — nunca debe contar como ocupando su
-                 // propio sillón. undefined en un alta nueva (no hay turno propio todavía),
-                 // así que "+ nuevo turno" se comporta exactamente igual que antes.
+  turnoIdExcluir, // opcional (Etapa 5C, bug de Reasignar con horario exacto): id del propio
+                  // turno que se está reasignando — nunca debe contar como ocupando su
+                  // propio sillón. undefined en un alta nueva (no hay turno propio todavía),
+                  // así que "+ nuevo turno" se comporta exactamente igual que antes.
+  pacienteId // opcional (Etapa 5C): id del paciente, para la regla "un turno por paciente por
+             // día" (transversal a sedes). Sin este parámetro la regla simplemente no se
+             // evalúa (mismo criterio que buscarHuecos). Antes de esto, el horario exacto
+             // era el único camino de carga que se la salteaba por olvido, no a propósito.
 ) {
   try {
+    // Regla "un turno por día": bloqueo total y el más básico de todos — se evalúa antes
+    // que horario de sede o disponibilidad de sillón, sin excepción de rol y sin ofrecer
+    // nunca "cargar igual" (mismo criterio que bloqueoPaciente en buscarHuecos).
+    const diasBloqueadosPaciente = diasBloqueadosPorPaciente(pacienteId, turnosExistentes, turnoIdExcluir);
+    if (diasBloqueadosPaciente.has(fechaISOFija)) {
+      return { exito: false, motivo: "pacienteMismoDia" };
+    }
+
     const sedesABuscar = sedeIdManual
       ? [sedeIdManual]
       : await determinarSedesABuscar(medicoId, obraSocialPaciente, medicosCacheLectura);

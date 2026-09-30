@@ -1269,6 +1269,7 @@ async function intentarGuardarTurno() {
     diasSolicitados,
     fechaCalculadaDesdeDias,
     pacienteObraSocial: pacienteSeleccionadoCarga.obraSocial || "", // T7: ver guardarComoSobreturnoFisico (caso Occhipinti)
+    pacienteId: pacienteSeleccionadoCarga.id, // Etapa 5C: regla "un turno por día" en el horario exacto
     // Etapa 4, punto 8: se lee del <select> solo si el rol puede definirlo — para el
     // resto de los roles el bloque está oculto y campoPrioridad.value siempre es "" de
     // todas formas, pero se refuerza acá para no depender solo del CSS del lado del cliente.
@@ -2282,11 +2283,26 @@ async function buscarYGuardarConHorarioManual(datosBasicos, horarioManualString,
       // Etapa 5C, bug de Reasignar con horario exacto: sin esto el turno que se está
       // reasignando se contaba a sí mismo como ocupando su sillón. undefined en un alta
       // nueva (datosBasicos no trae turnoIdParaReasignar), sin ningún cambio para ese caso.
-      datosBasicos.turnoIdParaReasignar
+      datosBasicos.turnoIdParaReasignar,
+      // Etapa 5C: regla "un turno por paciente por día" también para el horario exacto.
+      // Se toma SIEMPRE de datosBasicos (nunca de pacienteSeleccionadoCarga directo): en
+      // Reasignar esa variable global puede tener un paciente viejo de un "+ nuevo turno"
+      // anterior, o null.
+      datosBasicos.pacienteId
     );
 
     if (resultado.exito) {
       await guardarTurnoConHueco(datosBasicos, resultado.hueco, null);
+      return;
+    }
+
+    // Etapa 5C: bloqueo total, mismo criterio y mismo texto que bloqueoPaciente en la
+    // búsqueda automática — nunca se ofrece sobreturno.
+    if (resultado.motivo === "pacienteMismoDia") {
+      mostrarMensaje(
+        `Este paciente ya tiene un turno cargado el ${formatearFechaLegible(new Date(datosBasicos.fecha + "T00:00:00"))}. No se puede agendar otro el mismo día.`,
+        "error"
+      );
       return;
     }
 
