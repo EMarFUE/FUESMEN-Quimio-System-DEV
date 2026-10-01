@@ -2034,6 +2034,12 @@ async function guardarModificacionGrilla() {
     // arriba (select deshabilitado), así que tampoco hay nada físico que validar.
     // internado se hereda solo: no está en camposNuevos, así que anularYCrearTurnoGrilla
     // lo copia igual del turno original (ver comentario de esa función).
+    // Etapa 5C (cierre): la validación de "sillón libre" usa los turnos/bloqueos/cupos que
+    // lee turnero-carga.js. Si alguna de esas lecturas falló, validaría contra listas
+    // vacías y aprobaría un sillón ocupado — no se valida a ciegas (ver
+    // asegurarLecturasMotor). Un internado no valida sillón, así que no lo necesita.
+    if (!turno.internado && hayLecturasMotorFallidas() && !(await asegurarLecturasMotor(mostrarMensajeModificarGrilla))) return;
+
     const validacion = turno.internado
       ? { valido: true }
       : validarModificacionTurno(
@@ -2344,8 +2350,6 @@ async function buscarDisponibilidadGrilla() {
   const sillones = (sedeDoc.sillones || [])
     .filter(s => s.tipo === "regular")
     .map(s => s.numero);
-  const turnosEnSede = turnosExistentes.filter(t => t.sedeId === sedeId);
-
   const boton = document.getElementById("boton-buscar-disponibilidad-grilla");
   boton.disabled = true;
   mostrarMensajeConsultaDisponibilidadGrilla("Buscando…", "info");
@@ -2353,6 +2357,11 @@ async function buscarDisponibilidadGrilla() {
   ultimoResultadoConsultaDisponibilidadGrilla = null;
 
   try {
+    // Etapa 5C (cierre): sin datos completos no se informa disponibilidad (ver
+    // asegurarLecturasMotor en turnero-carga.js). turnosEnSede se arma recién después del
+    // control: si hubo que releer, usa la lista fresca.
+    if (hayLecturasMotorFallidas() && !(await asegurarLecturasMotor(mostrarMensajeConsultaDisponibilidadGrilla))) return;
+    const turnosEnSede = turnosExistentes.filter(t => t.sedeId === sedeId);
     const resultado = await buscarHuecosEnSede(
       sedeId,
       sedeDoc.nombre,

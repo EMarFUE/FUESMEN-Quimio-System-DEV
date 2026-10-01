@@ -430,13 +430,54 @@ async function cargarSedesCarga() {
 }
 
 // Etapa T4: cargar cupos por porcentaje para que el motor pueda aplicar el techo por médico
+// Etapa 5C (cierre) — lecturas que alimentan al motor. Antes, si fallaba la lectura de
+// turnos, bloqueos o cupos (red, cuota, índice), el error se tragaba en silencio y la lista
+// quedaba vacía: el motor creía que no había nada ocupado ni bloqueado y podía ofrecer un
+// sillón ya tomado (turno duplicado) o un horario bloqueado, sin avisar a nadie. Ahora cada
+// cargador anota si falló, y TODA búsqueda que decide disponibilidad pasa primero por
+// asegurarLecturasMotor(): reintenta sola lo que falló y, si sigue fallando, no busca y lo
+// dice. Usado por buscarYMostrarHuecos, buscarYGuardarConHorarioManual,
+// buscarFechaPosteriorConReacomodo (acá) y por Modificar / Consultar disponibilidad
+// (turnero-grilla.js).
+const lecturasMotorFallidas = new Set();
+const RECARGAS_LECTURAS_MOTOR = {
+  turnos: () => cargarTurnosExistentes(),
+  bloqueos: () => cargarBloqueosCarga(),
+  cupos: () => cargarCuposCarga()
+};
+const NOMBRES_LECTURAS_MOTOR = { turnos: "turnos ya cargados", bloqueos: "bloqueos", cupos: "cupos" };
+
+// Camino normal (nada falló): devuelve false sin pausa, así quien llama sigue de largo
+// exactamente como antes de este arreglo — mismo comportamiento y mismo orden de ejecución.
+// Solo cuando hay algo marcado como fallido se espera a asegurarLecturasMotor().
+function hayLecturasMotorFallidas() {
+  return lecturasMotorFallidas.size > 0;
+}
+
+async function asegurarLecturasMotor(mostrarMensaje) {
+  if (lecturasMotorFallidas.size > 0) {
+    await Promise.all([...lecturasMotorFallidas].map((clave) => RECARGAS_LECTURAS_MOTOR[clave]()));
+  }
+  if (lecturasMotorFallidas.size === 0) return true;
+  const faltan = [...lecturasMotorFallidas].map((clave) => NOMBRES_LECTURAS_MOTOR[clave]).join(", ");
+  mostrarMensaje(
+    `No se pudieron leer los datos que el sistema necesita para calcular la disponibilidad (${faltan}). ` +
+    "Para no arriesgar un turno duplicado o en un horario bloqueado, no se buscó lugar. " +
+    "Reintentá en unos segundos; si sigue pasando, recargá la página.",
+    "error"
+  );
+  return false;
+}
+
 async function cargarCuposCarga() {
   try {
     const snapshot = await db.collection("turneroCupos").get();
     cuposCacheCarga = snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
+    lecturasMotorFallidas.delete("cupos");
   } catch (error) {
     console.warn("No se pudieron cargar los cupos para el motor:", error);
     cuposCacheCarga = [];
+    lecturasMotorFallidas.add("cupos"); // Etapa 5C (cierre): ver asegurarLecturasMotor
   }
 }
 
@@ -447,9 +488,11 @@ async function cargarBloqueosCarga() {
   try {
     const snapshot = await db.collection("turneroBloqueos").where("activo", "==", true).get();
     bloqueosCacheCarga = snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
+    lecturasMotorFallidas.delete("bloqueos");
   } catch (error) {
     console.warn("No se pudieron cargar los bloqueos para el motor:", error);
     bloqueosCacheCarga = [];
+    lecturasMotorFallidas.add("bloqueos"); // Etapa 5C (cierre): ver asegurarLecturasMotor
   }
 }
 
@@ -473,9 +516,11 @@ async function cargarTurnosExistentes() {
       id: doc.id,
       ...doc.data()
     }));
+    lecturasMotorFallidas.delete("turnos");
   } catch (error) {
     console.warn("No se pudieron cargar los turnos existentes para el motor:", error);
     turnosExistentes = [];
+    lecturasMotorFallidas.add("turnos"); // Etapa 5C (cierre): ver asegurarLecturasMotor
   }
 }
 
@@ -1387,6 +1432,13 @@ async function buscarYMostrarHuecos(datosBasicos, pacienteInfo) {
   if (datosBasicos.modoReasignar) mostrarMensajeReasignarGrilla("Buscando disponibilidad…", "info");
 
   try {
+    // Etapa 5C (cierre): sin datos completos no se busca (ver asegurarLecturasMotor).
+    const avisarLecturas = (texto, tipo) => {
+      mostrarMensajeGeneral(texto, tipo);
+      if (datosBasicos.modoReasignar) mostrarMensajeReasignarGrilla(texto, tipo);
+    };
+    if (hayLecturasMotorFallidas() && !(await asegurarLecturasMotor(avisarLecturas))) return;
+
     // Ronda "reacomodo automático de sillones": la búsqueda automática (nunca horario
     // manual, nunca "Modificar" — ninguno de los dos pasa por acá) usa
     // buscarHuecosConReacomodo en vez de buscarHuecos. "Reasignar" (modoReasignar) queda
@@ -1795,6 +1847,7 @@ async function buscarFechaPosteriorConReacomodo(datosBasicos) {
   mostrarMensajeGeneral("Buscando en fechas posteriores…", "info");
 
   try {
+    if (hayLecturasMotorFallidas() && !(await asegurarLecturasMotor(mostrarMensajeGeneral))) return; // Etapa 5C (cierre)
     const idsNoReacomodables = calcularTurnosNoReacomodablesIds();
     const resultado = await buscarHuecosConReacomodo(
       datosBasicos.medicoId || datosBasicos.medicoNombre,
@@ -2444,6 +2497,7 @@ async function buscarYGuardarConHorarioManual(datosBasicos, horarioManualString,
   mostrarMensaje("Verificando el horario indicado…", "info");
 
   try {
+    if (hayLecturasMotorFallidas() && !(await asegurarLecturasMotor(mostrarMensaje))) return; // Etapa 5C (cierre)
     const resultado = await buscarSillonHorarioFijo(
       datosBasicos.medicoId || datosBasicos.medicoNombre,
       // Bug reportado por Elías (Etapa 5C, 2.8): esta función se escribió originalmente
