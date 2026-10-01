@@ -151,6 +151,9 @@ function armarHtmlFormularioCarga() {
           <label for="campo-fecha">Fecha exacta</label>
           <input type="date" id="campo-fecha" style="max-width:200px;" />
         </div>
+        <div id="nota-fecha-retroactiva" class="ayuda-carga" style="display:none;margin-top:6px;">
+          Podés elegir una fecha pasada: se carga como turno retroactivo, con "Hora exacta" (o como paciente internado).
+        </div>
       </div>
     </div>
 
@@ -335,6 +338,11 @@ function sincronizarFormularioCarga() {
   marcarActivo("boton-modo-dias", modoFecha === "dias");
   marcarActivo("boton-modo-calendario", modoFecha !== "dias");
 
+  // Fecha pasada (turno retroactivo): la indicación se muestra solo a quien puede (administrador y enfermería)
+  const permiteRetro = typeof puedeCargarEnFechaPasadaCarga === "function" && puedeCargarEnFechaPasadaCarga();
+  const notaRetro = document.getElementById("nota-fecha-retroactiva");
+  if (notaRetro) notaRetro.style.display = permiteRetro ? "block" : "none";
+
   // Lugar
   const lugar = internado ? "internado" : (backup ? "backup" : "sillon");
   marcarRadio("lugar-carga", lugar, { sillon: "opcion-lugar-sillon", backup: "opcion-lugar-backup", internado: "opcion-lugar-internado" });
@@ -356,7 +364,7 @@ function sincronizarFormularioCarga() {
     boton.textContent = internado ? "Guardar internado" : "Buscar disponibilidad y guardar turno";
   }
 
-  renderizarResumenCarga({ internado, backup, permiteHora });
+  renderizarResumenCarga({ internado, backup, permiteHora, permiteRetro });
 }
 
 function marcarActivo(id, activo) {
@@ -396,6 +404,7 @@ function visibleCarga(id) {
 // qué falta completar antes de guardar.
 function partesResumenCarga(estado) {
   const partes = [];
+  let esRetroactiva = false;
 
   // Solo "Apellido, Nombre": el documento y la obra social ya se ven arriba, en la sección Paciente.
   let textoPaciente = "";
@@ -446,7 +455,8 @@ function partesResumenCarga(estado) {
     }
   } else {
     const f = valorCampoCarga("campo-fecha");
-    partes.push(f ? { texto: f.split("-").reverse().join("/") } : { texto: "falta la fecha", falta: true });
+    esRetroactiva = !!f && estado.permiteRetro && typeof fechaLocalHoy === "function" && f < fechaLocalHoy();
+    partes.push(f ? { texto: f.split("-").reverse().join("/") + (esRetroactiva ? " (retroactivo)" : "") } : { texto: "falta la fecha", falta: true });
   }
 
   const hora = valorCampoCarga("campo-horario-manual");
@@ -455,6 +465,8 @@ function partesResumenCarga(estado) {
   } else {
     if (estado.permiteHora && modoHorarioCarga === "exacto") {
       partes.push(hora ? { texto: `a las ${hora}` } : { texto: "falta la hora exacta", falta: true });
+    } else if (esRetroactiva) {
+      partes.push({ texto: "falta elegir Hora exacta (la fecha ya pasó)", falta: true });
     } else {
       partes.push({ texto: "primer horario disponible" });
     }

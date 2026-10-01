@@ -162,6 +162,52 @@ function ahoraParaMotor() {
   return { fechaISO: fechaLocalHoy(), minuto: d.getHours() * 60 + d.getMinutes() };
 }
 
+// Etapa 5C (cierre, decisión de Elías) — TURNOS RETROACTIVOS. Con "Fecha exacta" + "Hora
+// exacta" (o como internado) se puede cargar un turno en CUALQUIER fecha y hora, también
+// pasadas. Lo pueden hacer quienes ya tienen Hora exacta: administrador y enfermería.
+// REASIGNAR sigue sin permitir el pasado (ni fecha ni hora pasadas). La búsqueda automática
+// tampoco: nunca ofrece días pasados. Las reglas del servidor no comparan fechas contra hoy
+// (decisión de T12, por el huso horario), así que no hace falta tocar firestore.rules.
+function puedeCargarEnFechaPasadaCarga() {
+  return rolActualCarga === "administrador" || rolActualCarga === "enfermeria";
+}
+
+// null si la fecha se puede usar; si no, el aviso que corresponde.
+function mensajeFechaPasadaCarga(fechaISO, { modoReasignar, horarioManual, esInternado }) {
+  if (!fechaISO || fechaISO >= fechaLocalHoy()) return null;
+  if (modoReasignar) return "No se puede reasignar a una fecha pasada. Elegí hoy o una fecha futura.";
+  if (!puedeCargarEnFechaPasadaCarga()) return "No se pueden cargar turnos en fechas pasadas.";
+  if (!horarioManual && !esInternado) {
+    return "Esa fecha ya pasó. Para cargar un turno en el pasado elegí \"Hora exacta\" (o \"Paciente internado\") y completá la hora.";
+  }
+  return null;
+}
+
+// cargarTurnosExistentes() lee desde AYER hacia adelante: para un día más viejo el motor vería
+// todos los sillones libres y podría superponer turnos en el pasado (y no vería si el paciente
+// ya tiene otro turno ese día, en cualquier sede). Antes de verificar una fecha pasada se leen
+// los turnos activos de ESA fecha y se reemplazan en turnosExistentes. Si la lectura falla no se
+// sigue: mismo criterio que asegurarLecturasMotor (nunca decidir a ciegas).
+async function cargarTurnosDeFechaCarga(fechaISO, mostrarMensaje) {
+  try {
+    const snapshot = await db.collection("turnos")
+      .where("estado", "==", "activo")
+      .where("fecha", "==", fechaISO)
+      .get();
+    const delDia = snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
+    turnosExistentes = turnosExistentes.filter((t) => t.fecha !== fechaISO).concat(delDia);
+    return true;
+  } catch (error) {
+    console.warn("No se pudieron cargar los turnos de la fecha " + fechaISO + ":", error);
+    mostrarMensaje(
+      "No se pudieron leer los turnos de esa fecha. Para no arriesgar una superposición, no se cargó el turno. " +
+      "Reintentá en unos segundos; si sigue pasando, recargá la página.",
+      "error"
+    );
+    return false;
+  }
+}
+
 // Ronda "reacomodo automático de sillones": criterio temporal para turnosNoReacomodablesIds
 // (confirmado con Elías, b.3) — protege los turnos de HOY cuyo horarioFin ya pasó respecto
 // de la hora actual. No hace falta ningún campo nuevo (hoy el sistema no tiene noción de
@@ -386,7 +432,9 @@ async function iniciarCargaTurno(user, datosUsuario) {
   document.getElementById("campo-premedicacion").addEventListener("change", actualizarResumenDuracion);
   document.getElementById("campo-dias-turno").addEventListener("input", actualizarFechaCalculada);
   document.getElementById("campo-dias-turno").max = String(TOPE_DIAS_TURNO);
-  document.getElementById("campo-fecha").min = fechaLocalHoy();
+  // Etapa 5C (cierre): administrador y enfermería pueden elegir fechas pasadas (turno retroactivo).
+  if (puedeCargarEnFechaPasadaCarga()) document.getElementById("campo-fecha").removeAttribute("min");
+  else document.getElementById("campo-fecha").min = fechaLocalHoy();
   document.getElementById("campo-fecha").max = fechaMaximaAnticipacionISO();
 
   campoBuscarPaciente.disabled = true;
@@ -1396,21 +1444,30 @@ async function intentarGuardarTurno() {
     && (rolActualCarga === "administrador" || rolActualCarga === "enfermeria")
     && campoInternado.checked);
 
+  // Etapa 5C, P4: en el formulario nuevo "Hora exacta" es una opción visible. Si se elige y no
+  // se carga la hora, se avisa (antes, el campo vacío caía en silencio a la búsqueda
+  // automática). horarioExactoSinHoraCarga vive en turnero-formulario.js; sin ese módulo
+  // (pantallas que no lo usan) este control no aplica. Va ANTES del control de fecha pasada:
+  // si falta la hora, ese es el aviso que corresponde.
+  if (typeof horarioExactoSinHoraCarga === "function" && horarioExactoSinHoraCarga()) {
+    mostrarMensajeGeneral("Elegiste \"Hora exacta\": falta cargar la hora (o elegí \"Primer horario disponible\").", "error");
+    return;
+  }
+
+  // Etapa 5C (cierre): turnos retroactivos — una fecha pasada solo se carga con hora manual
+  // (o como internado) y solo administrador/enfermería. Ver mensajeFechaPasadaCarga.
+  const avisoFechaPasada = mensajeFechaPasadaCarga(fecha, { modoReasignar: false, horarioManual, esInternado });
+  if (avisoFechaPasada) {
+    mostrarMensajeGeneral(avisoFechaPasada, "error");
+    return;
+  }
+
   if (esInternado) {
     if (!horarioManual) {
       mostrarMensajeGeneral("Para un turno de internado, cargá el horario en que arranca el tratamiento.", "error");
       return;
     }
     await guardarTurnoInternado(datosBasicos, horarioManual);
-    return;
-  }
-
-  // Etapa 5C, P4: en el formulario nuevo "Hora exacta" es una opción visible. Si se elige y no
-  // se carga la hora, se avisa (antes, el campo vacío caía en silencio a la búsqueda
-  // automática). horarioExactoSinHoraCarga vive en turnero-formulario.js; sin ese módulo
-  // (pantallas que no lo usan) este control no aplica.
-  if (typeof horarioExactoSinHoraCarga === "function" && horarioExactoSinHoraCarga()) {
-    mostrarMensajeGeneral("Elegiste \"Hora exacta\": falta cargar la hora (o elegí \"Primer horario disponible\").", "error");
     return;
   }
 
@@ -1455,6 +1512,11 @@ async function buscarYMostrarHuecos(datosBasicos, pacienteInfo) {
       if (datosBasicos.modoReasignar) mostrarMensajeReasignarGrilla(texto, tipo);
     };
     if (hayLecturasMotorFallidas() && !(await asegurarLecturasMotor(avisarLecturas))) return;
+
+    // Etapa 5C (cierre): la búsqueda automática desde una fecha pasada ofrecería días pasados.
+    // Nunca, tampoco en Reasignar (que sigue sin permitir el pasado).
+    const avisoFechaPasada = mensajeFechaPasadaCarga(datosBasicos.fecha, { modoReasignar: !!datosBasicos.modoReasignar, horarioManual: "", esInternado: false });
+    if (avisoFechaPasada) { avisarLecturas(avisoFechaPasada, "error"); return; }
 
     // Ronda "reacomodo automático de sillones": la búsqueda automática (nunca horario
     // manual, nunca "Modificar" — ninguno de los dos pasa por acá) usa
@@ -2515,6 +2577,15 @@ async function buscarYGuardarConHorarioManual(datosBasicos, horarioManualString,
 
   try {
     if (hayLecturasMotorFallidas() && !(await asegurarLecturasMotor(mostrarMensaje))) return; // Etapa 5C (cierre)
+
+    // Etapa 5C (cierre): turnos retroactivos. Reasignar sigue sin permitir fechas pasadas. En un
+    // alta nueva, una fecha pasada se verifica contra los turnos REALES de ese día (se leen acá).
+    if (datosBasicos.fecha < fechaLocalHoy()) {
+      const avisoFechaPasada = mensajeFechaPasadaCarga(datosBasicos.fecha, { modoReasignar: !!datosBasicos.modoReasignar, horarioManual: horarioManualString, esInternado: false });
+      if (avisoFechaPasada) { mostrarMensaje(avisoFechaPasada, "error"); return; }
+      if (!(await cargarTurnosDeFechaCarga(datosBasicos.fecha, mostrarMensaje))) return;
+    }
+
     const resultado = await buscarSillonHorarioFijo(
       datosBasicos.medicoId || datosBasicos.medicoNombre,
       // Bug reportado por Elías (Etapa 5C, 2.8): esta función se escribió originalmente
@@ -2544,7 +2615,9 @@ async function buscarYGuardarConHorarioManual(datosBasicos, horarioManualString,
       // Reasignar esa variable global puede tener un paciente viejo de un "+ nuevo turno"
       // anterior, o null.
       datosBasicos.pacienteId,
-      ahoraParaMotor() // Etapa 5C (P2): una hora de hoy que ya pasó se rechaza
+      // Etapa 5C (P2): una hora de hoy que ya pasó se rechaza SOLO en Reasignar. En un alta nueva
+      // (decisión de Elías, al cierre de la 5C) la hora exacta se puede cargar "cuando se quiera".
+      datosBasicos.modoReasignar ? ahoraParaMotor() : undefined
     );
 
     if (resultado.exito) {
