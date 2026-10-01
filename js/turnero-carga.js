@@ -153,6 +153,15 @@ function fechaLocalHoy() {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 }
 
+// Etapa 5C (P2): la hora actual para el motor — hoy y el minuto del día (sin segundos), del
+// reloj de la PC (el mismo que ya usa calcularTurnosNoReacomodablesIds). El motor no
+// ofrece ningún horario de hoy anterior a este minuto (ver inicioMinimoPorAhora en
+// turnero-motor.js). El arrastre semanal NO lo usa, a propósito (decisión de Elías).
+function ahoraParaMotor() {
+  const d = new Date();
+  return { fechaISO: fechaLocalHoy(), minuto: d.getHours() * 60 + d.getMinutes() };
+}
+
 // Ronda "reacomodo automático de sillones": criterio temporal para turnosNoReacomodablesIds
 // (confirmado con Elías, b.3) — protege los turnos de HOY cuyo horarioFin ya pasó respecto
 // de la hora actual. No hace falta ningún campo nuevo (hoy el sistema no tiene noción de
@@ -1388,10 +1397,14 @@ async function buscarYMostrarHuecos(datosBasicos, pacienteInfo) {
     // hay con qué reacomodar), así que llamarla es inocuo pero el resultado nunca trae
     // reacomodo.
     const usaReacomodo = !datosBasicos.modoReasignar;
-    const buscarFn = usaReacomodo ? buscarHuecosConReacomodo : buscarHuecos;
     const idsNoReacomodables = usaReacomodo ? calcularTurnosNoReacomodablesIds() : undefined;
 
-    const resultado = await buscarFn(
+    // Etapa 5C (P2): hoy no se ofrece ningún horario anterior a la hora actual. Las dos
+    // búsquedas se llaman por separado (antes era un único buscarFn): sus parámetros a
+    // partir del 15° no significan lo mismo, así que `ahora` no se puede pasar "por
+    // posición" a ambas con una sola lista de argumentos.
+    const ahora = ahoraParaMotor();
+    const argsBusqueda = [
       datosBasicos.medicoId || datosBasicos.medicoNombre, // Para "Otro", pasamos nombre; el motor lo maneja
       paciente.obraSocial || "",
       datosBasicos.duracionTotalMinutos,
@@ -1406,14 +1419,20 @@ async function buscarYMostrarHuecos(datosBasicos, pacienteInfo) {
       datosBasicos.turnoIdParaReasignar, // T7: excluye el propio turno del chequeo de "un turno por día" — undefined en un alta nueva, no afecta nada
       bloqueosCacheCarga, // Etapa T9
       datosBasicos.soloSillonTipo || null, // Ronda "mejoras motor", Frente 3: "backup" si se tildó el checkbox dedicado de "+ nuevo turno"; también "backup" desde "Reasignar" (Etapa 2, punto 4) cuando el turno que se reasigna ya estaba en ese tipo de sillón (ver buscarReasignarGrilla en turnero-grilla.js); null/undefined en cualquier otro caso
-      idsNoReacomodables, // buscarHuecos ignora este parámetro de más — inocuo cuando usaReacomodo es false
-      false, // probarDiasPosteriores: intento inicial, siempre acotado a la fecha pedida
-      // Etapa 5C (decisión de Elías): si el lugar encontrado es OTRO día, ofrecer también
-      // reacomodar el día pedido — solo en "+ nuevo turno" (usaReacomodo) y solo para
-      // quien puede autorizar un reacomodo (administrador/enfermería; el médico sigue
-      // viendo solo el otro día, como antes).
-      usaReacomodo && rolActualCarga !== "medico"
-    );
+    ];
+    const resultado = usaReacomodo
+      ? await buscarHuecosConReacomodo(
+          ...argsBusqueda,
+          idsNoReacomodables,
+          false, // probarDiasPosteriores: intento inicial, siempre acotado a la fecha pedida
+          // Etapa 5C (decisión de Elías): si el lugar encontrado es OTRO día, ofrecer también
+          // reacomodar el día pedido — solo en "+ nuevo turno" (usaReacomodo) y solo para
+          // quien puede autorizar un reacomodo (administrador/enfermería; el médico sigue
+          // viendo solo el otro día, como antes).
+          rolActualCarga !== "medico",
+          ahora
+        )
+      : await buscarHuecos(...argsBusqueda, ahora);
 
     ultimaBusquedaHuecos = resultado;
 
@@ -1793,7 +1812,9 @@ async function buscarFechaPosteriorConReacomodo(datosBasicos) {
       bloqueosCacheCarga,
       datosBasicos.soloSillonTipo || null,
       idsNoReacomodables,
-      true // probarDiasPosteriores
+      true, // probarDiasPosteriores
+      undefined, // ofrecerAlternativaDiaPedido: no aplica en esta búsqueda
+      ahoraParaMotor() // Etapa 5C (P2)
     );
 
     if (resultado.exito && resultado.reacomodo) {
@@ -2443,7 +2464,8 @@ async function buscarYGuardarConHorarioManual(datosBasicos, horarioManualString,
       // Se toma SIEMPRE de datosBasicos (nunca de pacienteSeleccionadoCarga directo): en
       // Reasignar esa variable global puede tener un paciente viejo de un "+ nuevo turno"
       // anterior, o null.
-      datosBasicos.pacienteId
+      datosBasicos.pacienteId,
+      ahoraParaMotor() // Etapa 5C (P2): una hora de hoy que ya pasó se rechaza
     );
 
     if (resultado.exito) {
@@ -2460,6 +2482,16 @@ async function buscarYGuardarConHorarioManual(datosBasicos, horarioManualString,
     if (resultado.motivo === "pacienteMismoDia") {
       mostrarMensaje(
         `Este paciente ya tiene un turno cargado el ${formatearFechaLegible(new Date(datosBasicos.fecha + "T00:00:00"))}. No se puede agendar otro el mismo día.`,
+        "error"
+      );
+      return;
+    }
+
+    // Etapa 5C (P2, decisión de Elías): el horario exacto no sirve para cargar retroactivo.
+    // Corte total, sin sobreturno (la hora ya pasó, no es un problema de sillón).
+    if (resultado.motivo === "horaPasada") {
+      mostrarMensaje(
+        `Esa hora ya pasó (ahora son las ${resultado.horaActual}). Elegí una hora de ahí en adelante.`,
         "error"
       );
       return;

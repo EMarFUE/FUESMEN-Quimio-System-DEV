@@ -323,6 +323,23 @@ function pseudoTurnosBloqueoEnFecha(bloqueosCacheLectura, sedeId, fechaActualISO
   return pseudoTurnos;
 }
 
+// --- Etapa 5C, P2: no ofrecer horarios que ya pasaron (fecha = hoy) ---
+//
+// El motor no conoce la hora actual: quien lo llama (turnero-carga.js, ahoraParaMotor)
+// le pasa un objeto opcional `ahora = { fechaISO: "2026-10-05", minuto: 632 }` (hoy y el
+// minuto del día, sin segundos). Si falta, nada cambia (retrocompatible: mismo
+// comportamiento de siempre). Si la fecha evaluada es HOY, el primer inicio que se puede
+// ofrecer es la hora actual redondeada HACIA ARRIBA a la misma grilla de GRANO_MINUTOS
+// anclada en la apertura de la sede — así los horarios que se ofrecen son exactamente los
+// de siempre, menos los que ya pasaron (una hora igual a la actual se acepta). Devuelve
+// null cuando no corresponde filtrar: sin `ahora`, otra fecha, o la sede todavía no abrió.
+// El arrastre semanal (buscarHuecosSemanaEnSede) no lo usa a propósito: decisión de Elías.
+function inicioMinimoPorAhora(ahora, fechaISODia, horaAperturaMinutos) {
+  if (!ahora || ahora.fechaISO !== fechaISODia || !Number.isFinite(ahora.minuto)) return null;
+  if (ahora.minuto <= horaAperturaMinutos) return null;
+  return horaAperturaMinutos + Math.ceil((ahora.minuto - horaAperturaMinutos) / GRANO_MINUTOS) * GRANO_MINUTOS;
+}
+
 // --- Evaluación de un solo día (T6 Fase 3: extraído de buscarHuecosEnSede) ---
 //
 // Contiene, sin cambios de comportamiento respecto de la versión anterior, la atadura
@@ -344,6 +361,7 @@ function evaluarDiaEnSede({
   turnosDelDia, turnosExistentesEnSede, sillonesDisponibles,
   medicoId, medicoDoc, usaAtaduraDia, usaCuposPorcentaje, cuposCacheLectura,
   diasBloqueadosPaciente, // Set de fechas ISO donde el paciente ya tiene otro turno (o undefined/vacío)
+  ahora, // opcional (Etapa 5C, P2): { fechaISO, minuto } — ver inicioMinimoPorAhora
   capturarCandidato // bool: true solo cuando corresponde buscar el candidato físico de
                      // respaldo para ofrecer como sobreturno (diasDesde === 0 en la
                      // búsqueda secuencial); la búsqueda semanal siempre pasa false,
@@ -495,6 +513,16 @@ function evaluarDiaEnSede({
     franjaRestringeEsteDia = horaAperturaBusqueda > horaAperturaMinutos || limiteInicioFranja < horaCierreMinutos;
   }
 
+  // Etapa 5C (P2): si el día evaluado es HOY, no se ofrece nada anterior a la hora
+  // actual. Se aplica DESPUÉS de calcular franjaRestringeEsteDia, a propósito: la hora
+  // actual no cuenta como "restricción de la franja" (no cambia qué bloqueo se informa),
+  // solo acota el barrido de abajo. Si hoy ya no queda ningún inicio posible, el día
+  // devuelve huecos vacíos y quien llama sigue con el día siguiente.
+  const inicioMinimoHoy = inicioMinimoPorAhora(ahora, fechaActualISO, horaAperturaMinutos);
+  if (inicioMinimoHoy !== null) {
+    horaAperturaBusqueda = Math.max(horaAperturaBusqueda, inicioMinimoHoy);
+  }
+
   // --- Búsqueda continua: recorrer el horario (el inicio, acotado por franja si
   // aplica; el cierre para el CÁLCULO DE AJUSTE y el límite físico de dónde puede
   // TERMINAR el turno siguen siendo siempre horaCierreMinutos, el cierre real de la
@@ -612,9 +640,10 @@ async function buscarHuecosEnSede(
   usaCuposPorcentaje, // T4: bool, de turneroSedes.usaCuposPorcentaje
   cuposCacheLectura, // T4: array de docs de turneroCupos
   diasBloqueadosPaciente, // opcional: Set de fechas ISO donde el paciente ya tiene otro turno
-  bloqueosCacheLectura // T9: array de docs de turneroBloqueos, activos, cualquier sede
+  bloqueosCacheLectura, // T9: array de docs de turneroBloqueos, activos, cualquier sede
                         // (se filtra por sedeId acá adentro) — opcional, un llamador que
                         // no lo pasa se comporta exactamente igual que antes de esta etapa.
+  ahora // opcional (Etapa 5C, P2): { fechaISO, minuto } — hoy no se ofrece nada anterior a la hora actual
 ) {
   // Retorna { huecos, candidatoCupoExcedido, candidatoAtaduraExcedida, bloqueadoPorPacienteMismoDia }.
   // huecos: array de huecos válidos (de mayor a menor ajuste), ya filtrados por paciente/atadura/cupo.
@@ -679,7 +708,7 @@ async function buscarHuecosEnSede(
       horaAperturaMinutos, horaCierreMinutos, duracionMinutos, duracionNormalizada,
       turnosDelDia, turnosExistentesEnSede, sillonesDisponibles,
       medicoId, medicoDoc, usaAtaduraDia, usaCuposPorcentaje, cuposCacheLectura,
-      diasBloqueadosPaciente,
+      diasBloqueadosPaciente, ahora,
       capturarCandidato: diasDesde === 0
     });
 
@@ -892,6 +921,10 @@ async function buscarHuecos(
                  // atadura/cupo/franja a propósito (se fuerza medicoDoc a null más abajo, que
                  // es lo que ya hace que esas tres reglas nunca se evalúen — mismo mecanismo
                  // que ya usa "Otro"). Se usa desde el checkbox dedicado de "sillón backup".
+  ,
+  ahora // opcional (Etapa 5C, P2): { fechaISO, minuto }. Si la fecha evaluada es hoy, no se
+        // ofrece ningún horario anterior a la hora actual (ver inicioMinimoPorAhora).
+        // Sin este parámetro, comportamiento idéntico al de siempre.
 ) {
   // Retorna la estructura de resultado del motor.
 
@@ -981,7 +1014,8 @@ async function buscarHuecos(
         usaCuposPorcentaje,
         cuposCacheLectura,
         diasBloqueadosPaciente,
-        bloqueosCacheLectura
+        bloqueosCacheLectura,
+        ahora
       );
 
       const huecos = resultadoSede.huecos;
@@ -1389,6 +1423,10 @@ async function buscarSillonHorarioFijo(
              // día" (transversal a sedes). Sin este parámetro la regla simplemente no se
              // evalúa (mismo criterio que buscarHuecos). Antes de esto, el horario exacto
              // era el único camino de carga que se la salteaba por olvido, no a propósito.
+  ,
+  ahora // opcional (Etapa 5C, P2): { fechaISO, minuto }. Si la fecha pedida es hoy y la hora
+        // exacta es anterior a la actual, se rechaza con motivo "horaPasada". Sin este
+        // parámetro, comportamiento idéntico al de siempre.
 ) {
   try {
     // Regla "un turno por día": bloqueo total y el más básico de todos — se evalúa antes
@@ -1397,6 +1435,15 @@ async function buscarSillonHorarioFijo(
     const diasBloqueadosPaciente = diasBloqueadosPorPaciente(pacienteId, turnosExistentes, turnoIdExcluir);
     if (diasBloqueadosPaciente.has(fechaISOFija)) {
       return { exito: false, motivo: "pacienteMismoDia" };
+    }
+
+    // Etapa 5C (P2, decisión de Elías): el horario exacto tampoco sirve para cargar
+    // retroactivo — una hora de hoy que ya pasó se rechaza. Va después de "un turno por
+    // día" (el bloqueo más básico) y antes de mirar sedes/sillones. Una hora igual a la
+    // actual se acepta.
+    if (ahora && ahora.fechaISO === fechaISOFija && Number.isFinite(ahora.minuto) &&
+        minutoDesdeString(horaInicioString) < ahora.minuto) {
+      return { exito: false, motivo: "horaPasada", horaActual: stringDesdeMinuto(ahora.minuto) };
     }
 
     const sedesABuscar = sedeIdManual
@@ -1747,13 +1794,15 @@ async function buscarHuecosConReacomodo(
   medicosCacheLectura, sedesCacheLectura, turnosExistentes, esRolMedico,
   sedeIdManual, cuposCacheLectura, pacienteId, turnoIdExcluir,
   bloqueosCacheLectura, soloSillonTipo, turnosNoReacomodablesIds, probarDiasPosteriores,
-  ofrecerAlternativaDiaPedido // opcional (Etapa 5C, decisión de Elías): ver más abajo
+  ofrecerAlternativaDiaPedido, // opcional (Etapa 5C, decisión de Elías): ver más abajo
+  ahora // opcional (Etapa 5C, P2): { fechaISO, minuto } — mismo piso de hora actual para la
+        // búsqueda normal, el reacomodo y la alternativa (ver inicioMinimoPorAhora)
 ) {
   const resultadoNormal = await buscarHuecos(
     medicoId, obraSocialPaciente, duracionMinutos, fechaSolicitadaISO,
     medicosCacheLectura, sedesCacheLectura, turnosExistentes, esRolMedico,
     sedeIdManual, cuposCacheLectura, pacienteId, turnoIdExcluir,
-    bloqueosCacheLectura, soloSillonTipo
+    bloqueosCacheLectura, soloSillonTipo, ahora
   );
 
   // Etapa 5C (decisión de Elías): antes, el reacomodo era solo el último recurso — si la
@@ -1851,6 +1900,12 @@ async function buscarHuecosConReacomodo(
         if (medicoDoc && medicoDoc.franjaHoraria && medicoDoc.franjaHoraria.horaInicio && medicoDoc.franjaHoraria.horaFin) {
           horaAperturaBusqueda = Math.max(horaAperturaMinutos, minutoDesdeString(medicoDoc.franjaHoraria.horaInicio));
           limiteInicioFranja = minutoDesdeString(medicoDoc.franjaHoraria.horaFin);
+        }
+
+        // Etapa 5C (P2): hoy el reacomodo tampoco propone horarios que ya pasaron.
+        const inicioMinimoHoyReacomodo = inicioMinimoPorAhora(ahora, fechaActualISO, horaAperturaMinutos);
+        if (inicioMinimoHoyReacomodo !== null) {
+          horaAperturaBusqueda = Math.max(horaAperturaBusqueda, inicioMinimoHoyReacomodo);
         }
 
         // Etapa 5C (auditoría del motor): solo participan del reacomodo los turnos que
