@@ -23,188 +23,9 @@
     <div id="mensaje-general" class="mensaje-info" style="display:none;"></div>
 
     <div id="contenido-carga" style="display:none;">
-    <div class="tarjeta-formulario">
-
-      <div class="titulo-bloque">A quién pertenece</div>
-      <div id="paciente-seleccionado" class="paciente-seleccionado" style="display:none;">
-        <span id="texto-paciente-seleccionado"></span>
-        <button type="button" class="enlace-accion peligro" onclick="quitarPacienteSeleccionado()">quitar</button>
-      </div>
-      <div id="bloque-busqueda-paciente">
-        <div class="campo">
-          <input type="text" id="campo-buscar-paciente" placeholder="Buscar por apellido, nombre o documento" />
-        </div>
-        <div id="resultados-busqueda-paciente"></div>
-        <div id="sin-resultados" style="display:none;font-size:13px;color:var(--color-muted);margin-bottom:8px;">
-          No se encontró ningún paciente. Podés darlo de alta:
-          <button type="button" class="enlace-accion" onclick="mostrarAltaRapida()">dar de alta</button>
-          <button type="button" id="boton-actualizar-pacientes" class="enlace-accion" onclick="actualizarListadoPacientes()">actualizar listado</button>
-        </div>
-        <div id="bloque-alta-rapida" class="bloque-alta-rapida" style="display:none;">
-          <div class="fila-3">
-            <div class="campo" style="margin-bottom:0;">
-              <label>Tipo de documento</label>
-              <select id="alta-tipo-documento">
-                <option value="DNI">DNI</option>
-                <option value="LC">Libreta cívica</option>
-                <option value="LE">Libreta de enrolamiento</option>
-              </select>
-            </div>
-            <div class="campo" style="margin-bottom:0;">
-              <label>Número de documento</label>
-              <input type="text" id="alta-numero-documento" inputmode="numeric" placeholder="Sin puntos ni espacios" />
-            </div>
-            <div class="campo" style="margin-bottom:0;">
-              <label>&nbsp;</label>
-              <button type="button" class="boton-principal" onclick="altaRapidaPaciente()">Guardar paciente</button>
-            </div>
-          </div>
-          <div class="fila-2">
-            <div class="campo" style="margin-bottom:0;">
-              <label>Nombre</label>
-              <input type="text" id="alta-nombre" />
-            </div>
-            <div class="campo" style="margin-bottom:0;">
-              <label>Apellido</label>
-              <input type="text" id="alta-apellido" />
-            </div>
-          </div>
-          <div class="campo">
-            <label>Obra social</label>
-            <select id="alta-obra-social">
-              <option value="">Elegir obra social</option>
-            </select>
-          </div>
-          <div id="mensaje-alta-rapida" class="mensaje-info error" style="display:none;margin-top:10px;"></div>
-        </div>
-      </div>
-
-      <div class="titulo-bloque" style="margin-top:8px;">Médico tratante</div>
-      <div class="fila-2">
-        <div class="campo" style="margin-bottom:0;">
-          <label>Médico</label>
-          <select id="campo-medico"></select>
-        </div>
-        <div class="campo" style="margin-bottom:0;">
-          <label>Sede</label>
-          <div id="sede-automatica-info" style="display:none;padding-top:8px;">
-            <span class="badge" id="badge-sede-automatica"></span>
-          </div>
-          <div id="aviso-sede-indefinida" style="display:none;font-size:12.5px;color:var(--color-muted);margin-bottom:6px;">
-            Este médico no tiene días cargados en ninguna sede. Elegí la sede a mano.
-          </div>
-          <select id="campo-sede-manual" style="display:none;"></select>
-        </div>
-      </div>
-      <div class="campo" id="bloque-medico-otro" style="display:none;">
-        <label>Nombre del profesional</label>
-        <input type="text" id="campo-medico-otro-nombre" placeholder="Nombre y apellido" />
-      </div>
-
-      <div class="titulo-bloque" style="margin-top:8px;">Protocolo(s)</div>
-      <div id="lista-protocolos"></div>
-      <button type="button" class="enlace-accion" onclick="agregarFilaProtocolo()" style="margin-bottom:12px;">+ agregar otro protocolo</button>
-
-      <label class="check-linea">
-        <input type="checkbox" id="campo-premedicacion" />
-        Premedicación / control de signos vitales (+30 min fijos)
-      </label>
-
-      <!-- Etapa 5C, punto 2.1 — solo administrador/enfermería (visibilidad en
-           actualizarVisibilidadCamposEspeciales, turnero-carga.js). Chico a propósito,
-           a pedido de Elías, para que no se tilde por error. -->
-      <label class="check-linea" id="bloque-internado" style="display:none;font-size:12.5px;color:var(--color-muted);">
-        <input type="checkbox" id="campo-internado" onchange="alternarInternado()" style="width:14px;height:14px;vertical-align:middle;" />
-        Paciente internado (no ocupa sillón ni imprime comprobante)
-      </label>
-
-      <div id="resumen-duracion" class="resumen-suma ok" style="margin:0 0 20px;"></div>
-
-      <label class="check-linea" id="bloque-sillon-backup" style="display:none;font-size:15px;font-weight:600;padding:10px 12px;background:var(--color-warning-soft);border:1px solid var(--color-warning);border-radius:6px;color:var(--color-warning-text);">
-        <input type="checkbox" id="campo-sillon-backup" style="width:18px;height:18px;vertical-align:middle;margin-right:6px;" />
-        Buscar únicamente en el puesto para inyectables
-      </label>
-
-      <div class="titulo-bloque">Ciclo y sesión</div>
-      <div class="fila-2">
-        <div class="campo" style="margin-bottom:0;">
-          <label>Ciclo</label>
-          <input type="number" id="campo-ciclo" min="1" step="1" placeholder="1" />
-        </div>
-        <div class="campo" style="margin-bottom:0;">
-          <label>Sesión</label>
-          <input type="number" id="campo-sesion" min="1" step="1" placeholder="1" />
-        </div>
-      </div>
-
-      <div class="titulo-bloque" style="margin-top:20px;">Fecha y horario</div>
-      <div style="font-size:12.5px;color:var(--color-muted);margin-bottom:10px;">
-        Para la fecha, el sistema va a intentar ubicar el turno el día que eligas. Si hay lugar disponible,
-        se guardará automáticamente en el mejor hueco encontrado (el que menos tiempo desperdicia). 
-        Si no hay lugar en los próximos 10 días, se te ofrecerá la opción de cargar como sobreturno.
-      </div>
-
-      <div id="bloque-dias-turno" class="campo" style="margin-bottom:14px;">
-        <label>¿En cuántos días es el turno? (0 a 60)</label>
-        <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
-          <input type="number" id="campo-dias-turno" min="0" step="1" placeholder="Ej: 12" style="max-width:110px;" />
-          <button type="button" class="enlace-accion" onclick="usarTurnoHoy()">hoy</button>
-          <button type="button" class="enlace-accion" onclick="alternarModoFecha()">elegir fecha exacta en el calendario</button>
-        </div>
-        <div id="fecha-calculada-info" style="margin-top:8px;display:none;">
-          <span class="badge" id="badge-fecha-calculada"></span>
-        </div>
-      </div>
-
-      <div id="bloque-fecha-manual" class="campo" style="display:none;margin-bottom:14px;">
-        <label>Fecha exacta</label>
-        <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
-          <input type="date" id="campo-fecha" style="max-width:200px;" />
-          <button type="button" class="enlace-accion" onclick="alternarModoFecha()">volver a calcular por días</button>
-        </div>
-      </div>
-
-      <div id="bloque-horario-manual" class="campo" style="display:none;margin-bottom:14px;">
-        <label>Horario manual (opcional, forzado)</label>
-        <input type="time" id="campo-horario-manual" style="max-width:150px;" />
-      </div>
-
-      <div style="font-size:12.5px;color:var(--color-muted);margin-bottom:14px;padding:8px;background:#f9f9f9;border-radius:4px;">
-        ℹ️ El horario se asignará automáticamente según la disponibilidad encontrada, salvo que completes el horario manual de arriba (administrador o enfermería).
-        Si lo completás, se fuerza ese horario por encima de la atadura de día, el cupo por porcentaje y la franja horaria del médico. Siempre
-        se respeta que haya sillón libre a esa hora, los bloqueos vigentes y el horario de apertura y cierre de la sede.
-      </div>
-
-      <!-- Etapa 4, punto 9 — nota inicial opcional al cargar el turno. Colapsada por
-           defecto (mismo patrón visual que "+ agregar otro protocolo" de arriba). El
-           resto de los comentarios (ver, agregar más, editar/borrar los propios) vive en
-           la grilla una vez creado el turno — acá es solo para dejar algo escrito desde
-           el vamos, si hace falta. -->
-      <div class="campo" id="bloque-nota-inicial-turno" style="margin-top:10px;">
-        <button type="button" id="boton-abrir-nota-inicial-turno" class="enlace-accion" onclick="mostrarNotaInicialCarga()">+ Agregar un comentario</button>
-        <div id="contenedor-nota-inicial-turno" style="display:none;margin-top:6px;">
-          <textarea id="campo-nota-inicial-turno" maxlength="200" rows="2"
-            style="width:100%;box-sizing:border-box;font-size:13px;"
-            placeholder="Observación para el equipo (la va a poder ver y editar cualquier rol; solo vos podés editarla o borrarla después)"></textarea>
-        </div>
-      </div>
-
-      <!-- Etapa 4, punto 8 — semáforo de prioridad. Visible/editable solo para médico y
-           administrador (mismo criterio que la visibilidad en la grilla); para el resto
-           de los roles el bloque queda oculto (ver actualizarVisibilidadCamposEspeciales
-           en turnero-carga.js) y el turno se guarda sin prioridad definida. -->
-      <div class="campo" id="bloque-prioridad-turno" style="display:none;margin-top:6px;">
-        <label style="font-size:12px;color:var(--color-muted);">(Prioridad del paciente — opcional)</label>
-        <select id="campo-prioridad-turno" style="max-width:260px;font-size:13px;">
-          <option value="">Sin definir</option>
-          <option value="rojo">🔴 Rojo — hay que verlo obligatoriamente</option>
-          <option value="amarillo">🟡 Amarillo — trae análisis/consulta corta</option>
-          <option value="verde">🟢 Verde — pasa directo a hospital de día</option>
-        </select>
-      </div>
-
-      <button type="button" id="boton-guardar-turno" class="boton-principal" style="margin-top:20px;" onclick="intentarGuardarTurno()">Buscar disponibilidad y guardar turno</button>
-    </div>
+      <!-- Etapa 5C, P4: el formulario se escribe UNA vez (js/turnero-formulario.js) y lo montan
+           las dos pantallas — esta y el modal "+ Nuevo turno" de agenda.html. -->
+      <div id="formulario-carga"></div>
     </div><!-- /contenido-carga -->
   </div>
 
@@ -214,8 +35,11 @@
   <script src="../js/firebase-config.js"></script>
   <script src="../js/auth.js"></script>
   <script src="../js/turnero-motor.js"></script>
+  <script src="../js/turnero-formulario.js"></script>
   <script src="../js/turnero-carga.js"></script>
   <script>
+    montarFormularioCarga("formulario-carga"); // antes de iniciarCargaTurno(), que engancha los eventos
+
     requireAuth(async (user, datosUsuario) => {
       const rolLabel = ROLES[datosUsuario.rol] || datosUsuario.rol;
       document.getElementById("datos-sesion").innerHTML =

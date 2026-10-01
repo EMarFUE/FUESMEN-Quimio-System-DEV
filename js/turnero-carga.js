@@ -258,6 +258,8 @@ function renderizarModoFecha() {
     document.getElementById("campo-dias-turno").value = "";
     document.getElementById("fecha-calculada-info").style.display = "none";
   }
+  // Etapa 5C, P4: el botón activo de "En días / Fecha exacta" y el resumen siguen a modoFechaTurno.
+  if (typeof sincronizarFormularioCarga === "function") sincronizarFormularioCarga();
 }
 
 function leerCachePacientes() {
@@ -358,6 +360,9 @@ function mostrarMensajeGeneral(texto, tipo) {
   el.className = "mensaje-info " + tipo;
   el.style.display = "block";
   window.scrollTo({ top: 0, behavior: "smooth" });
+  // Etapa 5C, P4: dentro del modal "+ Nuevo turno" quien se desplaza es el modal, no la
+  // ventana, y con el botón de guardar abajo el mensaje podía quedar fuera de vista.
+  if (typeof el.scrollIntoView === "function") el.scrollIntoView({ behavior: "smooth", block: "nearest" });
 }
 
 async function iniciarCargaTurno(user, datosUsuario) {
@@ -1187,6 +1192,9 @@ function actualizarVisibilidadCamposEspeciales() {
     const campoBackup = document.getElementById("campo-sillon-backup");
     if (campoBackup) campoBackup.checked = false;
   }
+
+  // Etapa 5C, P4: los grupos Horario/Lugar y el resumen se derivan de lo que quedó visible/tildado.
+  if (typeof sincronizarFormularioCarga === "function") sincronizarFormularioCarga();
 }
 
 // Etapa 5C, punto 2.1 — al tildar "Internado": el horario manual pasa a obligatorio
@@ -1394,6 +1402,15 @@ async function intentarGuardarTurno() {
       return;
     }
     await guardarTurnoInternado(datosBasicos, horarioManual);
+    return;
+  }
+
+  // Etapa 5C, P4: en el formulario nuevo "Hora exacta" es una opción visible. Si se elige y no
+  // se carga la hora, se avisa (antes, el campo vacío caía en silencio a la búsqueda
+  // automática). horarioExactoSinHoraCarga vive en turnero-formulario.js; sin ese módulo
+  // (pantallas que no lo usan) este control no aplica.
+  if (typeof horarioExactoSinHoraCarga === "function" && horarioExactoSinHoraCarga()) {
+    mostrarMensajeGeneral("Elegiste \"Hora exacta\": falta cargar la hora (o elegí \"Primer horario disponible\").", "error");
     return;
   }
 
@@ -2880,6 +2897,8 @@ function resetearFormularioCarga() {
   if (contenedorNotaInicial) contenedorNotaInicial.style.display = "none";
   const botonNotaInicial = document.getElementById("boton-abrir-nota-inicial-turno");
   if (botonNotaInicial) botonNotaInicial.style.display = "inline-block";
+
+  if (typeof reiniciarFormularioCargaUi === "function") reiniciarFormularioCargaUi(); // Etapa 5C, P4
 
   modoFechaTurno = "dias";
   document.getElementById("campo-dias-turno").value = "";

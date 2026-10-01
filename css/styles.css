@@ -2373,3 +2373,259 @@ h1 {
     grid-template-columns: 1fr;
   }
 }
+
+/* ==========================================================================
+   Etapa 5C, P4 (punto 2.2) — formulario de carga de turnos en 4 secciones
+   (js/turnero-formulario.js). Reutiliza las variables y clases existentes
+   (.campo, .fila-2, .fila-3, .badge, .enlace-accion, .boton-principal…).
+   ========================================================================== */
+.formulario-carga {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.seccion-carga {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  background: var(--color-surface);
+  padding: 16px 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.seccion-carga-encabezado {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.seccion-carga-encabezado h2 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--color-text);
+}
+
+.seccion-carga-numero {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: var(--color-accion-principal);
+  color: #fff;
+  font-size: 12.5px;
+  font-weight: 700;
+}
+
+.seccion-carga-opcional {
+  font-size: 12px;
+  color: var(--color-muted);
+}
+
+/* Dentro de una sección los .campo no necesitan el margen de abajo: el gap ya separa. */
+.seccion-carga .campo { margin-bottom: 0; }
+.seccion-carga .campo label,
+.seccion-carga .fila-fecha-carga label,
+.seccion-carga .contenedor-hora-exacta label { font-size: 13px; font-weight: 500; }
+
+.grupo-carga {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.grupo-carga-titulo {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--color-text);
+}
+
+.fila-fecha-carga {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.fila-fecha-carga input { margin: 0; }
+
+.boton-chico {
+  min-height: 36px;
+  padding: 0 14px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  background: var(--color-surface);
+  color: var(--color-text);
+  font-family: var(--font);
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.boton-chico:hover { background: var(--color-bg); }
+
+.enlace-sin-margen { margin-left: 0; }
+
+/* Selector de dos opciones (En días / Fecha exacta) */
+.segmentado {
+  display: inline-flex;
+  align-self: flex-start;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+
+.segmentado-opcion {
+  min-height: 38px;
+  padding: 0 16px;
+  border: none;
+  background: var(--color-surface);
+  color: var(--color-text);
+  font-family: var(--font);
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.segmentado-opcion.activo {
+  background: var(--color-accion-principal);
+  color: #fff;
+  font-weight: 600;
+}
+
+/* Opciones de radio con aspecto de tarjeta (Horario y Lugar) */
+.opcion-carga {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 44px;
+  box-sizing: border-box;
+  padding: 8px 12px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  background: var(--color-surface);
+  cursor: pointer;
+}
+
+.opcion-carga.seleccionada {
+  border-color: var(--color-accion-principal);
+  background: var(--color-accent-soft);
+}
+
+.opcion-carga input[type="radio"] {
+  width: 18px;
+  height: 18px;
+  margin: 0;
+  flex-shrink: 0;
+}
+
+.opcion-carga-texto {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 14px;
+}
+
+.opcion-carga-texto small,
+.opcion-check small {
+  font-size: 12px;
+  color: var(--color-muted);
+}
+
+/* "Paciente internado": a pedido de Elías (punto 2.1) tiene que ser discreto, para que no se
+   elija por error. Misma tarjeta, pero chica y apagada hasta que se elige a propósito. */
+.opcion-carga.opcion-secundaria {
+  min-height: 36px;
+  padding: 5px 12px;
+  background: transparent;
+  border-style: dashed;
+}
+
+.opcion-carga.opcion-secundaria .opcion-carga-texto { font-size: 12.5px; color: var(--color-muted); }
+.opcion-carga.opcion-secundaria.seleccionada { border-style: solid; background: var(--color-danger-soft); border-color: var(--color-danger); }
+.opcion-carga.opcion-secundaria.seleccionada .opcion-carga-texto { color: var(--color-danger); }
+
+.opcion-check {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 40px;
+  font-size: 14px;
+}
+
+.opcion-check input { width: 18px; height: 18px; margin: 0; }
+
+.contenedor-hora-exacta {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding-left: 4px;
+}
+
+.contenedor-hora-exacta input { margin: 0; }
+
+.ayuda-carga {
+  font-size: 12.5px;
+  color: var(--color-muted);
+}
+
+.ayuda-desplegable {
+  font-size: 12.5px;
+  color: var(--color-muted);
+}
+
+.ayuda-desplegable summary {
+  cursor: pointer;
+  color: var(--color-accion-principal);
+  font-weight: 500;
+  min-height: 32px;
+  display: flex;
+  align-items: center;
+}
+
+.ayuda-desplegable p { margin: 8px 0 0; line-height: 1.5; }
+
+.resumen-duracion-carga { margin-left: 0; }
+
+/* Resumen fijo al pie: queda visible mientras se completa el formulario, junto al botón. */
+.resumen-carga {
+  position: sticky;
+  bottom: 0;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 14px 16px;
+  border-radius: var(--radius);
+  background: var(--color-text);
+  color: #fff;
+  box-shadow: 0 -6px 14px rgba(43, 53, 66, 0.12);
+}
+
+.resumen-carga-contenido {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.resumen-carga-titulo {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #c3ccd4;
+}
+
+.resumen-carga-texto { font-size: 14px; line-height: 1.5; }
+.resumen-carga-faltante { color: #ffd9a8; font-weight: 600; }
+
+.resumen-carga .boton-principal {
+  background: #fff;
+  color: var(--color-text);
+  min-height: 44px;
+  font-weight: 600;
+}
+
+.resumen-carga .boton-principal:disabled { opacity: 0.6; cursor: default; }
