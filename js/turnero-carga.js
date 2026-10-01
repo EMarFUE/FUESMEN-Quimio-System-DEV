@@ -15,6 +15,21 @@ const SEDE_ENTRE_RIOS_NOMBRE = "Entre Ríos";
 const SEDE_CIVIT_DIRECCION = "Emilio Civit esq. Maza, San Rafael, Mza.";
 const SEDE_ENTRE_RIOS_DIRECCION = "Entre Ríos 345, San Rafael, Mza.";
 const MEDICO_OCCHIPINTI_ID = "occhipinti";
+
+// Etapa 5C (a pedido de Elías): en "Reasignar" la sede es SIEMPRE la que ya tiene el
+// turno — en los dos botones ("Buscar disponibilidad" y "Cargar a la fecha y hora
+// exactas") y en todos sus caminos de guardado (sobreturnos, internado). Para cambiar
+// de sede está "Modificar" (administrador). Antes, si el turno tenía sede automática
+// (p. ej. Occhipinti), se volvía a calcular la sede desde cero con la regla de T0
+// (Entre Ríos primero para obras sociales que no son POP) y el turno podía saltar de
+// sede según el botón usado. En "+ nuevo turno" (modoReasignar falsy) no cambia nada.
+function sedeIdManualParaMotor(datosBasicos) {
+  if (datosBasicos.modoReasignar) return datosBasicos.sedeId;
+  return datosBasicos.sedeAutomatica ? null : datosBasicos.sedeId;
+}
+function recalcularSedeOcchipinti(datosBasicos) {
+  return datosBasicos.medicoId === MEDICO_OCCHIPINTI_ID && !datosBasicos.modoReasignar;
+}
 const ROLES_MEDICO_OTRO = ["administrador", "enfermeria"];
 const PREMEDICACION_MINUTOS = 30;
 // Etapa 1 del plan post-integración: 60 → 190. Hay tratamientos que se agendan a seis
@@ -1374,7 +1389,7 @@ async function buscarYMostrarHuecos(datosBasicos, pacienteInfo) {
       sedesCacheCarga,
       turnosExistentes,
       rolActualCarga === "medico",
-      datosBasicos.sedeAutomatica ? null : datosBasicos.sedeId, // sede elegida a mano, si aplica
+      sedeIdManualParaMotor(datosBasicos), // sede elegida a mano, si aplica (en Reasignar: siempre la del turno)
       cuposCacheCarga, // Etapa T4
       paciente.id, // regla nueva: un turno por paciente por día (transversal a sedes)
       datosBasicos.turnoIdParaReasignar, // T7: excluye el propio turno del chequeo de "un turno por día" — undefined en un alta nueva, no afecta nada
@@ -2028,7 +2043,7 @@ async function guardarComoSobreturnoFisico(datosBasicos) {
   let sedeIdSobreturno = datosBasicos.sedeId;
   let sedeNombreSobreturno = datosBasicos.sedeNombre;
 
-  if (datosBasicos.medicoId === MEDICO_OCCHIPINTI_ID) {
+  if (recalcularSedeOcchipinti(datosBasicos)) { // en Reasignar se respeta la sede del turno
     // Occhipinti: incluso en sobreturno, la sede se determina según la obra social
     // (misma regla de T0 que usa la búsqueda normal, primera opción de la lista).
     // T7: usa datosBasicos.pacienteObraSocial, no pacienteSeleccionadoCarga directo —
@@ -2137,7 +2152,7 @@ async function guardarComoSobreturnoSoloBackup(datosBasicos) {
   let sedeIdSobreturno = datosBasicos.sedeId;
   let sedeNombreSobreturno = datosBasicos.sedeNombre;
 
-  if (datosBasicos.medicoId === MEDICO_OCCHIPINTI_ID) {
+  if (recalcularSedeOcchipinti(datosBasicos)) { // en Reasignar se respeta la sede del turno
     const sedesCandidatas = await determinarSedesABuscar(
       MEDICO_OCCHIPINTI_ID,
       datosBasicos.pacienteObraSocial || "",
@@ -2227,7 +2242,7 @@ async function guardarTurnoInternado(datosBasicos, horarioManualString) {
   let sedeId = datosBasicos.sedeId;
   let sedeNombre = datosBasicos.sedeNombre;
 
-  if (datosBasicos.medicoId === MEDICO_OCCHIPINTI_ID) {
+  if (recalcularSedeOcchipinti(datosBasicos)) { // en Reasignar se respeta la sede del turno
     const sedesCandidatas = await determinarSedesABuscar(
       MEDICO_OCCHIPINTI_ID,
       datosBasicos.pacienteObraSocial || "",
@@ -2277,7 +2292,7 @@ async function buscarYGuardarConHorarioManual(datosBasicos, horarioManualString,
       medicosCacheCarga,
       sedesCacheCarga,
       turnosExistentes,
-      datosBasicos.sedeAutomatica ? null : datosBasicos.sedeId,
+      sedeIdManualParaMotor(datosBasicos), // en Reasignar: siempre la sede del turno
       bloqueosCacheCarga,
       soloBackup,
       // Etapa 5C, bug de Reasignar con horario exacto: sin esto el turno que se está
@@ -2405,7 +2420,7 @@ async function guardarComoSobreturnoHorarioFijo(datosBasicos) {
   let sedeIdSobreturno = datosBasicos.sedeId;
   let sedeNombreSobreturno = datosBasicos.sedeNombre;
 
-  if (datosBasicos.medicoId === MEDICO_OCCHIPINTI_ID) {
+  if (recalcularSedeOcchipinti(datosBasicos)) { // en Reasignar se respeta la sede del turno
     const sedesCandidatas = await determinarSedesABuscar(
       MEDICO_OCCHIPINTI_ID,
       datosBasicos.pacienteObraSocial || "",
