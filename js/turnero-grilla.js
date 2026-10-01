@@ -2848,13 +2848,11 @@ function raizNotasDeTurnoGrilla(turnoId) {
   return (turno && turno.notasTurnoId) || turnoId;
 }
 
-// Etapa 5C, ajuste del 2.1 (decisión de Elías): con un internado solo interactúan
-// administrador y enfermería — el médico ve los comentarios pero no agrega, edita ni borra.
-function notasSoloLecturaGrilla(turnoId) {
-  if (rolActualGrilla !== "medico") return false;
-  const turno = (turnosCacheGrilla || []).find(t => t.id === turnoId);
-  return !!(turno && turno.internado);
-}
+// Etapa 5C (decisión de Elías, al cierre): en un internado el médico SÍ puede comentar — las
+// mismas reglas que en cualquier turno: agrega comentarios, y edita o borra solo los suyos
+// (no los ajenos). En la entrega 7 era solo lectura; esa restricción se quitó. Lo demás que
+// el médico no puede hacer con un internado (modificar, eliminar, reasignar, arrastrar,
+// editar la prioridad) no cambia.
 
 async function abrirNotasTurnoGrilla(turnoId) {
   turnoIdNotasActualGrilla = turnoId;
@@ -2862,9 +2860,6 @@ async function abrirNotasTurnoGrilla(turnoId) {
   document.getElementById("overlay-notas-turno-grilla").style.display = "flex";
   document.getElementById("lista-notas-turno-grilla").innerHTML = `<p style="color:var(--color-muted);font-size:13px;">Cargando…</p>`;
   cerrarFormularioNuevaNotaGrilla();
-  if (notasSoloLecturaGrilla(turnoId)) {
-    document.getElementById("boton-abrir-nueva-nota-grilla").style.display = "none";
-  }
 
   try {
     const snapshot = await db.collection("turnos").doc(raizNotasActualGrilla).collection("notas").orderBy("creadoEn", "asc").get();
@@ -2884,7 +2879,7 @@ function renderizarListaNotasGrilla() {
   }
   contenedor.innerHTML = notasCacheGrilla.map((nota) => {
     const esPropia = usuarioActualGrilla && nota.autorUid === usuarioActualGrilla.uid;
-    const accionesHtml = (esPropia && !notasSoloLecturaGrilla(turnoIdNotasActualGrilla))
+    const accionesHtml = esPropia
       ? `<button type="button" class="enlace-accion" style="font-size:12px;" onclick="iniciarEdicionNotaGrilla('${nota.id}')">Editar</button>
          <button type="button" class="enlace-accion peligro" style="font-size:12px;" onclick="borrarNotaTurnoGrilla('${nota.id}')">Borrar</button>`
       : "";
@@ -2923,7 +2918,6 @@ function cerrarFormularioNuevaNotaGrilla() {
 }
 
 async function guardarNuevaNotaTurnoGrilla() {
-  if (notasSoloLecturaGrilla(turnoIdNotasActualGrilla)) return; // resguardo — el botón ya está oculto
   const campoTexto = document.getElementById("campo-nueva-nota-grilla");
   const texto = campoTexto.value.trim();
   if (!texto) return;
@@ -2952,7 +2946,6 @@ async function guardarNuevaNotaTurnoGrilla() {
 }
 
 function iniciarEdicionNotaGrilla(notaId) {
-  if (notasSoloLecturaGrilla(turnoIdNotasActualGrilla)) return; // Etapa 5C: internado, solo lectura para el médico
   const nota = notasCacheGrilla.find(n => n.id === notaId);
   if (!nota) return;
   const fila = document.getElementById(`fila-nota-${notaId}`);
@@ -2966,7 +2959,6 @@ function iniciarEdicionNotaGrilla(notaId) {
 }
 
 async function guardarEdicionNotaGrilla(notaId) {
-  if (notasSoloLecturaGrilla(turnoIdNotasActualGrilla)) return; // Etapa 5C: internado, solo lectura para el médico
   const campoTexto = document.getElementById(`campo-editar-nota-${notaId}`);
   const texto = campoTexto.value.trim();
   if (!texto) return;
@@ -2983,7 +2975,6 @@ async function guardarEdicionNotaGrilla(notaId) {
 }
 
 async function borrarNotaTurnoGrilla(notaId) {
-  if (notasSoloLecturaGrilla(turnoIdNotasActualGrilla)) return; // Etapa 5C: internado, solo lectura para el médico
   try {
     const turnoRef = db.collection("turnos").doc(turnoIdNotasActualGrilla);
     const batch = db.batch();

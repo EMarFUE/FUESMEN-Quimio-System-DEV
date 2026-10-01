@@ -2225,8 +2225,13 @@ async function guardarComoSobreturnoFisico(datosBasicos) {
   // completa, se acomoda en lo que quede; si no queda nada de lugar, se carga con 1
   // minuto (marca administrativa). Ver calcularBloqueSobreturno en turnero-motor.js.
   const sedeDocParaHorario = sedesCacheCarga.find((s) => s.id === sedeIdSobreturno);
+  // Etapa 5C (P3): en Reasignar, el turno que se está reasignando NO cuenta para calcular el
+  // horario del sobreturno (antes sí: si estaba ese mismo día, el sobreturno quedaba más
+  // tarde de lo necesario, a veces como la marca de 1 minuto al cierre). undefined en un
+  // alta nueva: sin cambios.
   const turnosDelDiaEnSede = turnosExistentes.filter((t) =>
-    t.sedeId === sedeIdSobreturno && t.fecha === datosBasicos.fecha
+    t.sedeId === sedeIdSobreturno && t.fecha === datosBasicos.fecha &&
+    !(datosBasicos.turnoIdParaReasignar && t.id === datosBasicos.turnoIdParaReasignar)
   );
   // Etapa T9: un sobreturno por falta de disponibilidad física es el último recurso del
   // motor (agotó los 10 días sin encontrar nada) — antes de esta etapa no tenía en cuenta
@@ -2335,8 +2340,11 @@ async function guardarComoSobreturnoSoloBackup(datosBasicos) {
     return;
   }
 
+  // Etapa 5C (P3): mismo criterio que guardarComoSobreturnoFisico — el turno que se está
+  // reasignando no cuenta para calcular su propio horario.
   const turnosDelDiaEnSillonBackup = turnosExistentes.filter((t) =>
-    t.sedeId === sedeIdSobreturno && t.fecha === datosBasicos.fecha && t.sillon === sillonBackup.numero
+    t.sedeId === sedeIdSobreturno && t.fecha === datosBasicos.fecha && t.sillon === sillonBackup.numero &&
+    !(datosBasicos.turnoIdParaReasignar && t.id === datosBasicos.turnoIdParaReasignar)
   );
   const pseudoTurnosBloqueoBackup = pseudoTurnosBloqueoEnFecha(
     bloqueosCacheCarga, sedeIdSobreturno, datosBasicos.fecha,
