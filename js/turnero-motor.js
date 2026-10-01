@@ -170,11 +170,14 @@ async function determinarSedesABuscar(medicoId, obraSocial, medicosCacheLectura)
     return ["entre-rios", "emilio-civit"];
   }
 
+  // Etapa 5C (auditoría del motor): un médico sin diasPorSede cargado hacía fallar toda
+  // la búsqueda con "Error interno" — ahora cae al mismo fallback que un médico sin días.
+  const diasPorSede = medicoDoc.diasPorSede || {};
   const sedesDelMedico = [];
-  if (medicoDoc.diasPorSede["Entre Ríos"] && medicoDoc.diasPorSede["Entre Ríos"].length > 0) {
+  if (diasPorSede["Entre Ríos"] && diasPorSede["Entre Ríos"].length > 0) {
     sedesDelMedico.push("entre-rios");
   }
-  if (medicoDoc.diasPorSede["Emilio Civit"] && medicoDoc.diasPorSede["Emilio Civit"].length > 0) {
+  if (diasPorSede["Emilio Civit"] && diasPorSede["Emilio Civit"].length > 0) {
     sedesDelMedico.push("emilio-civit");
   }
 
@@ -929,8 +932,16 @@ async function buscarHuecos(
       const usaAtaduraDia = sedeDoc.usaAtaduraDia === true;
       const usaCuposPorcentaje = sedeDoc.usaCuposPorcentaje === true;
 
-      // Filtrar turnos de esta sede
-      const turnosEnSede = turnosExistentes.filter(t => t.sedeId === sedeId);
+      // Filtrar turnos de esta sede. Etapa 5C (auditoría del motor): se excluye también
+      // el propio turno que se está reasignando (turnoIdExcluir) — antes solo se lo
+      // excluía de la regla "un turno por día", pero seguía ocupando su propio sillón y
+      // sumando sus minutos al cupo del médico, así que "Reasignar → Buscar
+      // disponibilidad" podía mandarlo a otro día (o decir "sin lugar") cuando el lugar
+      // era justamente el suyo. Mismo criterio que ya usaba el arrastre semanal
+      // (turnosSinElArrastrado, turnero-grilla.js). undefined en un alta nueva: sin cambios.
+      const turnosEnSede = turnosExistentes.filter(t =>
+        t.sedeId === sedeId && !(turnoIdExcluir && t.id === turnoIdExcluir)
+      );
 
       const resultadoSede = await buscarHuecosEnSede(
         sedeId,
@@ -1650,7 +1661,9 @@ async function buscarHuecosConReacomodo(
           .filter(s => soloSillonTipo ? s.tipo === soloSillonTipo : s.tipo === "regular")
           .map(s => s.numero);
 
-        const turnosEnSede = (turnosExistentes || []).filter(t => t.sedeId === sedeId);
+        const turnosEnSede = (turnosExistentes || []).filter(t =>
+          t.sedeId === sedeId && !(turnoIdExcluir && t.id === turnoIdExcluir) // ver arreglo 1 en buscarHuecos
+        );
         const turnosDelDiaReales = turnosEnSede.filter(t =>
           t.fecha === fechaActualISO &&
           typeof t.horarioInicio === "string" && typeof t.horarioFin === "string"
@@ -1682,8 +1695,18 @@ async function buscarHuecosConReacomodo(
           limiteInicioFranja = minutoDesdeString(medicoDoc.franjaHoraria.horaFin);
         }
 
-        const turnosRealesFijos = turnosDelDiaReales.filter(t => idsNoReacomodables.has(t.id));
-        const turnosRealesReacomodables = turnosDelDiaReales.filter(t => !idsNoReacomodables.has(t.id));
+        // Etapa 5C (auditoría del motor): solo participan del reacomodo los turnos que
+        // ocupan un sillón físico. Antes entraban también los sobreturnos y los
+        // internados (sillon null): el barrido les asignaba un sillón como a cualquier
+        // otro — al confirmar, eso se escribía en Firestore (un sobreturno "Sin asignar"
+        // pasaba a un sillón, incluso el backup si la búsqueda era de ese tipo), movía a
+        // otros pacientes para hacerles lugar, y un internado le restaba capacidad a un
+        // día que sí tenía lugar. Además, un turno en un sillón que no es del pool de
+        // esta búsqueda (p. ej. el backup, en una búsqueda regular) queda fijo: el
+        // reacomodo nunca lo mueve de tipo de sillón.
+        const turnosConSillon = turnosDelDiaReales.filter(t => t.sillon != null);
+        const turnosRealesFijos = turnosConSillon.filter(t => idsNoReacomodables.has(t.id) || !sillones.includes(t.sillon));
+        const turnosRealesReacomodables = turnosConSillon.filter(t => !idsNoReacomodables.has(t.id) && sillones.includes(t.sillon));
         const pseudoTurnosBloqueo = turnosDelDia.filter(t => t.esBloqueo);
         const todosLosFijos = [...turnosRealesFijos, ...pseudoTurnosBloqueo];
 
