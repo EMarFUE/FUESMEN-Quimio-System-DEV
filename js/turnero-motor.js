@@ -64,9 +64,15 @@ const TIPO_SOBRETURNO_FRANJA = "franjaHoraria";
 //     medicoId, sedeNombre, fechaLegible,
 //     nombreDiaSolicitado, // "lunes", etc. — para el mensaje específico del rol médico
 //     diasAtencionMedico, // ["jueves", "viernes"] — días que sí le corresponden en esta sede
-//     huecoDisponible?: { sedeId, sedeNombre, fecha, fechaLegible, horaInicio, horaFin }
+//     huecoDisponible?: { sedeId, sedeNombre, fecha, fechaLegible, horaInicio, horaFin,
+//                         sinHuecoFisico? }
 //     // huecoDisponible solo si tipo === "confirmable", para cargarlo como sobreturno
 //     // (tipoSobreturno: "ataduraDia") si se confirma.
+//     // Etapa 5C (P1): si el día pedido ADEMÁS no tenía lugar físico (lleno, bloqueado o sin
+//     // un bloque de la duración pedida), el aviso de atadura se informa igual (antes se
+//     // perdía y salía "no hay lugar en 10 días"): huecoDisponible llega con
+//     // sinHuecoFisico: true y horaInicio/horaFin en null — quien lo carga calcula el
+//     // horario con calcularBloqueSobreturno (no hay un bloque real que reutilizar).
 //   },
 //   bloqueoFranja?: { // Ronda "mejoras motor": igual que bloqueoAtadura/bloqueoCupo, pero la
 //                     // causa es que el médico tiene franjaHoraria propia y el turno no podía
@@ -387,6 +393,21 @@ function evaluarDiaEnSede({
             sedeId, sedeNombre, fecha: fechaActualISO,
             fechaLegible: formatearFechaLegibleMotor(fechaActual),
             horaInicio: probeHueco.horaInicio, horaFin: probeHueco.horaFin, medicoId,
+            nombreDiaSolicitado: nombreDiaActual,
+            diasAtencionMedico: diasDelMedicoEnSede
+          };
+        } else {
+          // Etapa 5C (P1, decisión de Elías): el día pedido no es del médico Y no tiene
+          // lugar físico. Antes el candidato quedaba en null, el aviso de atadura se
+          // perdía y la búsqueda terminaba informando "No hay lugar disponible dentro de
+          // 10 días" (sin haber mirado ningún otro día: la atadura corta en el día
+          // pedido). Ahora se informa la atadura igual, con un candidato sin horario:
+          // sinHuecoFisico le avisa a quien lo carga que el horario hay que calcularlo
+          // (calcularBloqueSobreturno), porque no existe un bloque físico real.
+          candidatoAtadura = {
+            sedeId, sedeNombre, fecha: fechaActualISO,
+            fechaLegible: formatearFechaLegibleMotor(fechaActual),
+            horaInicio: null, horaFin: null, sinHuecoFisico: true, medicoId,
             nombreDiaSolicitado: nombreDiaActual,
             diasAtencionMedico: diasDelMedicoEnSede
           };
@@ -815,10 +836,11 @@ async function buscarHuecosSemanaEnSede(
 // ocupa el tiempo que corresponde (la duración pedida completa); si no entra completa, se
 // acomoda en lo que quede; si no queda nada de lugar, se carga con 1 minuto de duración
 // (una marca administrativa, no un horario real utilizable).
-// Solo hace falta para el sobreturno por falta de disponibilidad física: el sobreturno por
-// cupo y el sobreturno por atadura de día ya se construyen sobre un hueco físico real
-// (encontrarPrimerHuecoFisico encuentra el bloque completo o no encuentra nada), así que
-// nunca necesitan este ajuste.
+// Hace falta para el sobreturno por falta de disponibilidad física y, desde la Etapa 5C
+// (P1), también para el sobreturno por atadura cuando el día pedido no tenía lugar
+// (candidato con sinHuecoFisico). El sobreturno por cupo y el de atadura CON hueco libre
+// se construyen sobre un hueco físico real (encontrarPrimerHuecoFisico encuentra el
+// bloque completo o no encuentra nada), así que esos no necesitan este ajuste.
 function calcularBloqueSobreturno(horaAperturaString, horaCierreString, turnosDelDiaEnSede, duracionSolicitadaMinutos) {
   const horaAperturaMinutos = minutoDesdeString(horaAperturaString);
   const horaCierreMinutos = minutoDesdeString(horaCierreString);
@@ -1093,10 +1115,14 @@ async function buscarHuecos(
             fecha: candidatoAtaduraExcedidoGlobal.fecha,
             fechaLegible: candidatoAtaduraExcedidoGlobal.fechaLegible,
             horaInicio: candidatoAtaduraExcedidoGlobal.horaInicio,
-            horaFin: candidatoAtaduraExcedidoGlobal.horaFin
+            horaFin: candidatoAtaduraExcedidoGlobal.horaFin,
+            // Etapa 5C (P1): solo se agrega cuando es true — con hueco real, la forma de
+            // siempre queda idéntica.
+            ...(candidatoAtaduraExcedidoGlobal.sinHuecoFisico ? { sinHuecoFisico: true } : {})
           }
         },
-        sinHuecosMotivo: `El médico no atiende en ${candidatoAtaduraExcedidoGlobal.sedeNombre} el ${candidatoAtaduraExcedidoGlobal.fechaLegible}.`,
+        sinHuecosMotivo: `El médico no atiende en ${candidatoAtaduraExcedidoGlobal.sedeNombre} el ${candidatoAtaduraExcedidoGlobal.fechaLegible}.` +
+          (candidatoAtaduraExcedidoGlobal.sinHuecoFisico ? " Además, ese día no queda lugar en ningún sillón." : ""),
         sedesIntentadas: sedesABuscar,
         diasBuscados: TOPE_DIAS_BUSQUEDA
       };
@@ -1720,7 +1746,8 @@ async function buscarHuecosConReacomodo(
   medicoId, obraSocialPaciente, duracionMinutos, fechaSolicitadaISO,
   medicosCacheLectura, sedesCacheLectura, turnosExistentes, esRolMedico,
   sedeIdManual, cuposCacheLectura, pacienteId, turnoIdExcluir,
-  bloqueosCacheLectura, soloSillonTipo, turnosNoReacomodablesIds, probarDiasPosteriores
+  bloqueosCacheLectura, soloSillonTipo, turnosNoReacomodablesIds, probarDiasPosteriores,
+  ofrecerAlternativaDiaPedido // opcional (Etapa 5C, decisión de Elías): ver más abajo
 ) {
   const resultadoNormal = await buscarHuecos(
     medicoId, obraSocialPaciente, duracionMinutos, fechaSolicitadaISO,
@@ -1729,8 +1756,23 @@ async function buscarHuecosConReacomodo(
     bloqueosCacheLectura, soloSillonTipo
   );
 
+  // Etapa 5C (decisión de Elías): antes, el reacomodo era solo el último recurso — si la
+  // búsqueda normal encontraba lugar en CUALQUIER día de la ventana, el paciente iba ahí
+  // aunque el día pedido entrara moviendo sillones. Con ofrecerAlternativaDiaPedido, si el
+  // lugar encontrado es OTRO día, además se prueba reacomodar el día pedido y se devuelve
+  // como alternativaReacomodo ({ hueco, cambios }) para que la persona elija entre las dos
+  // (cartel aprobado por Elías, solo administrador/enfermería). Sin el parámetro, nada
+  // cambia: mismo resultado de siempre, alternativaReacomodo siempre null.
   if (resultadoNormal.exito) {
-    return { ...resultadoNormal, reacomodo: null };
+    let alternativaReacomodo = null;
+    const primerHueco = resultadoNormal.huecosEncontrados && resultadoNormal.huecosEncontrados[0];
+    if (ofrecerAlternativaDiaPedido && primerHueco && primerHueco.fecha !== fechaSolicitadaISO) {
+      const intento = await intentarReacomodoEnDias([0]);
+      if (intento) {
+        alternativaReacomodo = { hueco: intento.huecosEncontrados[0], cambios: intento.reacomodo.cambios };
+      }
+    }
+    return { ...resultadoNormal, reacomodo: null, alternativaReacomodo };
   }
 
   const causaEsFisica = !resultadoNormal.bloqueoAtadura && !resultadoNormal.bloqueoCupo &&
@@ -1739,6 +1781,16 @@ async function buscarHuecosConReacomodo(
     return { ...resultadoNormal, reacomodo: null };
   }
 
+  const diasDesdeARecorrer = probarDiasPosteriores
+    ? Array.from({ length: TOPE_DIAS_BUSQUEDA }, (_, i) => i + 1) // 1..TOPE_DIAS_BUSQUEDA
+    : [0];
+  const intento = await intentarReacomodoEnDias(diasDesdeARecorrer);
+  return intento || { ...resultadoNormal, reacomodo: null };
+
+  // Etapa 5C: el barrido de reacomodo de siempre, encapsulado sin cambios de lógica para
+  // poder usarlo también desde el caso de "alternativa en el día pedido" de arriba.
+  // Devuelve el resultado con reacomodo, o null si no encontró solución (o si hubo error).
+  async function intentarReacomodoEnDias(diasDesdeARecorrer) {
   try {
     const medicoDoc = soloSillonTipo ? null : (medicosCacheLectura || []).find(m => m.id === medicoId);
     const sedesABuscar = sedeIdManual
@@ -1747,10 +1799,6 @@ async function buscarHuecosConReacomodo(
     const diasBloqueadosPaciente = diasBloqueadosPorPaciente(pacienteId, turnosExistentes, turnoIdExcluir);
     const idsNoReacomodables = new Set(turnosNoReacomodablesIds || []);
     const diasEnEspanol = ["domingo", "lunes", "martes", "miercoles", "jueves", "viernes", "sabado"];
-
-    const diasDesdeARecorrer = probarDiasPosteriores
-      ? Array.from({ length: TOPE_DIAS_BUSQUEDA }, (_, i) => i + 1) // 1..TOPE_DIAS_BUSQUEDA
-      : [0];
 
     for (const diasDesde of diasDesdeARecorrer) {
       const fechaActual = fechaDesdeISO(fechaSolicitadaISO);
@@ -1855,10 +1903,11 @@ async function buscarHuecosConReacomodo(
     // informa la falta de lugar tal como la calculó buscarHuecos(), sin proponer ningún
     // cambio. A partir de acá, si hace falta lugar, la única vía es mover HORARIOS de
     // otros turnos a mano — este mecanismo nunca lo hace.
-    return { ...resultadoNormal, reacomodo: null };
+    return null;
   } catch (error) {
     console.error("Error en buscarHuecosConReacomodo:", error);
-    return { ...resultadoNormal, reacomodo: null };
+    return null;
+  }
   }
 }
 

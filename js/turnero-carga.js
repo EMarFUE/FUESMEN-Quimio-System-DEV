@@ -2002,10 +2002,15 @@ function mostrarBloqueoAtadura(resultadoBusqueda, datosBasicos) {
       `;
   } else {
     // Rol enfermería/administrador: sí necesitan el motivo para decidir.
+    // Etapa 5C (P1): si el día pedido ADEMÁS no tenía lugar (sinHuecoFisico), se avisa las
+    // dos cosas — antes ese caso caía en "no hay lugar en 10 días" y la atadura no se veía.
+    const diaCompleto = !!(bloqueo.huecoDisponible && bloqueo.huecoDisponible.sinHuecoFisico);
     cuerpoHTML = `
       <p>${escaparHtml(datosBasicos.medicoNombre)} no atiende en ${escaparHtml(bloqueo.sedeNombre)} el ${bloqueo.fechaLegible}.</p>
       <p style="font-size: 14px; color: var(--color-muted);">
-        Se puede cargar igual, como sobreturno de ese mismo día.
+        ${diaCompleto
+          ? "Además, ese día no queda lugar en ningún sillón. Se puede cargar igual como sobreturno sin sillón ese mismo día."
+          : "Se puede cargar igual, como sobreturno de ese mismo día."}
       </p>
       <button type="button" class="boton-principal" style="margin-bottom: 10px; width: 100%;"
         onclick="guardarConSobreturnoPorAtadura(${JSON.stringify(bloqueo.huecoDisponible).replace(/"/g, '&quot;')}, ${JSON.stringify(datosBasicos).replace(/"/g, '&quot;')})">
@@ -2034,18 +2039,48 @@ function cerrarModalBloqueoAtadura() {
 
 // Etapa T4 (31/8): enfermería/admin confirman cargar igual, saltando la atadura de día.
 // Se guarda como sobreturno (sillon: null) usando el hueco físico real que ya había ese
-// día (candidatoAtaduraExcedida en el motor ya lo buscó ignorando la atadura) — no hace
-// falta calcularBloqueSobreturno acá porque ese hueco ya es un bloque físico completo.
+// día (candidatoAtaduraExcedida en el motor ya lo buscó ignorando la atadura) — en ese
+// caso no hace falta calcularBloqueSobreturno porque ese hueco ya es un bloque completo.
+// Etapa 5C (P1): si el día pedido no tenía lugar (huecoDisponible.sinHuecoFisico, sin
+// horario), no hay bloque real: el horario se calcula como en cualquier sobreturno sin
+// sillón (calcularBloqueSobreturno), sin contar al propio turno si se está reasignando.
 async function guardarConSobreturnoPorAtadura(huecoDisponible, datosBasicos) {
   cerrarModalBloqueoAtadura();
+
+  let horaInicioSobreturno = huecoDisponible.horaInicio;
+  let horaFinSobreturno = huecoDisponible.horaFin;
+  if (huecoDisponible.sinHuecoFisico) {
+    const sedeDocAtadura = sedesCacheCarga.find((s) => s.id === huecoDisponible.sedeId);
+    const turnosDelDiaAtadura = turnosExistentes.filter((t) =>
+      t.sedeId === huecoDisponible.sedeId && t.fecha === huecoDisponible.fecha &&
+      !(datosBasicos.turnoIdParaReasignar && t.id === datosBasicos.turnoIdParaReasignar)
+    );
+    const sillonesAtadura = sedeDocAtadura ? (sedeDocAtadura.sillones || []).map((s) => s.numero) : [];
+    const pseudoTurnosBloqueoAtadura = sedeDocAtadura
+      ? pseudoTurnosBloqueoEnFecha(
+          bloqueosCacheCarga, huecoDisponible.sedeId, huecoDisponible.fecha,
+          sillonesAtadura, sedeDocAtadura.horaApertura, sedeDocAtadura.horaCierre
+        )
+      : [];
+    const bloqueAtadura = sedeDocAtadura
+      ? calcularBloqueSobreturno(
+          sedeDocAtadura.horaApertura,
+          sedeDocAtadura.horaCierre,
+          [...turnosDelDiaAtadura, ...pseudoTurnosBloqueoAtadura],
+          datosBasicos.duracionTotalMinutos
+        )
+      : { horaInicio: "09:00", horaFin: "10:00" }; // resguardo si la sede no está en caché (mismo criterio que guardarComoSobreturnoFisico)
+    horaInicioSobreturno = bloqueAtadura.horaInicio;
+    horaFinSobreturno = bloqueAtadura.horaFin;
+  }
 
   const hueco = {
     sedeId: huecoDisponible.sedeId,
     sedeNombre: huecoDisponible.sedeNombre,
     fecha: huecoDisponible.fecha,
     fechaLegible: huecoDisponible.fechaLegible,
-    horaInicio: huecoDisponible.horaInicio,
-    horaFin: huecoDisponible.horaFin,
+    horaInicio: horaInicioSobreturno,
+    horaFin: horaFinSobreturno,
     sillon: null // no ocupa un sillón real: es un sobreturno por atadura, no disponibilidad física
   };
 
