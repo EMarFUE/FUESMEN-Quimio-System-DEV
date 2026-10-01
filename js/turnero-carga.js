@@ -160,12 +160,23 @@ function fechaLocalHoy() {
 // que este cálculo solo protege algo cuando la fecha evaluada por el motor es HOY — se
 // puede pasar igual en cualquier búsqueda (con o sin reacomodo multi-día) sin necesidad de
 // recalcularlo por día.
+//
+// Etapa 5C (auditoría del motor, decisión de Elías): además de los que ya terminaron, se
+// protegen (a) los de HOY que ya EMPEZARON aunque no hayan terminado — el paciente está
+// sentado en ese sillón ahora mismo, moverlo "en papel" no tiene sentido — y (b) los
+// marcados como presentes (turno.presente === true), en cualquier fecha: el paciente ya
+// llegó, su sillón deja de ser intercambiable. Antes solo se protegía horarioFin < ahora.
+// También (c) los cargados con horario manual (turno.horarioManual === true).
 function calcularTurnosNoReacomodablesIds() {
   const hoyISO = fechaLocalHoy();
   const ahora = new Date();
-  const horaActualString = `${String(ahora.getHours()).padStart(2, "0")}:${String(ahora.getMinutes()).padStart(2, "0")}`;
+  const minutoActual = ahora.getHours() * 60 + ahora.getMinutes();
   return turnosExistentes
-    .filter((t) => t.fecha === hoyISO && typeof t.horarioFin === "string" && t.horarioFin < horaActualString)
+    .filter((t) =>
+      t.presente === true ||
+      t.horarioManual === true || // Etapa 5C (decisión de Elías): cargado con horario manual, "se dio así por algo"
+      (t.fecha === hoyISO && typeof t.horarioInicio === "string" && minutoDesdeString(t.horarioInicio) <= minutoActual)
+    )
     .map((t) => t.id);
 }
 
@@ -1396,7 +1407,12 @@ async function buscarYMostrarHuecos(datosBasicos, pacienteInfo) {
       bloqueosCacheCarga, // Etapa T9
       datosBasicos.soloSillonTipo || null, // Ronda "mejoras motor", Frente 3: "backup" si se tildó el checkbox dedicado de "+ nuevo turno"; también "backup" desde "Reasignar" (Etapa 2, punto 4) cuando el turno que se reasigna ya estaba en ese tipo de sillón (ver buscarReasignarGrilla en turnero-grilla.js); null/undefined en cualquier otro caso
       idsNoReacomodables, // buscarHuecos ignora este parámetro de más — inocuo cuando usaReacomodo es false
-      false // probarDiasPosteriores: intento inicial, siempre acotado a la fecha pedida
+      false, // probarDiasPosteriores: intento inicial, siempre acotado a la fecha pedida
+      // Etapa 5C (decisión de Elías): si el lugar encontrado es OTRO día, ofrecer también
+      // reacomodar el día pedido — solo en "+ nuevo turno" (usaReacomodo) y solo para
+      // quien puede autorizar un reacomodo (administrador/enfermería; el médico sigue
+      // viendo solo el otro día, como antes).
+      usaReacomodo && rolActualCarga !== "medico"
     );
 
     ultimaBusquedaHuecos = resultado;
@@ -1407,6 +1423,10 @@ async function buscarYMostrarHuecos(datosBasicos, pacienteInfo) {
         // El hueco encontrado exige mover de sillón a otro(s) turno(s) ya cargados (nunca
         // su horario ni fecha) — acción deliberada, nunca se aplica sin confirmar (a.2).
         mostrarConfirmarReacomodo(resultado, datosBasicos);
+      } else if (resultado.alternativaReacomodo) {
+        // Etapa 5C: hay lugar otro día sin mover a nadie, pero el día pedido también entra
+        // reacomodando sillones — la persona elige (cartel aprobado por Elías).
+        mostrarElegirOtroDiaOReacomodo(resultado, datosBasicos);
       } else {
         // El sistema elige automáticamente el mejor hueco (el primero de la lista, que está ordenado por mejor ajuste)
         await guardarTurnoConHueco(datosBasicos, mejorHueco, null);
@@ -1599,6 +1619,91 @@ function mostrarConfirmarReacomodo(resultadoBusqueda, datosBasicos) {
     </div>
   `;
   modal.style.display = "block";
+}
+
+// Etapa 5C (cartel aprobado por Elías): la búsqueda normal encontró lugar en OTRO día
+// sin mover a nadie, y el día pedido también entra pero reacomodando sillones. Se
+// muestran las dos opciones; nunca se elige sola ninguna. Solo llega acá con
+// administrador/enfermería (carga no pide la alternativa para el rol médico).
+function fechaCortaCarga(fechaISOString) {
+  const dias = ["domingo", "lunes", "martes", "miércoles", "jueves", "viernes", "sábado"];
+  const d = new Date(fechaISOString + "T00:00:00");
+  return `${dias[d.getDay()]} ${d.getDate()}/${d.getMonth() + 1}`;
+}
+
+function nombrePacienteDeTurnoCarga(turnoId) {
+  const t = (turnosExistentes || []).find((x) => x.id === turnoId);
+  if (!t || !t.paciente) return "Paciente";
+  return `${t.paciente.apellido || ""}, ${t.paciente.nombre || ""}`.trim();
+}
+
+function mostrarElegirOtroDiaOReacomodo(resultadoBusqueda, datosBasicos) {
+  let modal = document.getElementById("modal-sobreturno");
+  if (!modal) {
+    modal = document.createElement("div");
+    modal.id = "modal-sobreturno";
+    modal.style.cssText = `
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(0,0,0,0.5);
+      display: none;
+      z-index: 1000;
+      overflow-y: auto;
+    `;
+    document.body.appendChild(modal);
+  }
+
+  const huecoOtroDia = resultadoBusqueda.huecosEncontrados[0];
+  const alternativa = resultadoBusqueda.alternativaReacomodo;
+  const huecoDiaPedido = alternativa.hueco;
+  const fechaPedidaLegibleOriginal = formatearFechaLegible(new Date(datosBasicos.fecha + "T00:00:00"));
+  // "El lunes, 7 de octubre…" — en minúscula, va en medio de la frase del título.
+  const fechaPedidaLegible = fechaPedidaLegibleOriginal.charAt(0).toLowerCase() + fechaPedidaLegibleOriginal.slice(1);
+
+  const listaCambios = alternativa.cambios.map((c) =>
+    `<li>${escaparHtml(nombrePacienteDeTurnoCarga(c.turnoId))}: sillón ${escaparHtml(String(c.sillonAnterior))} → ${escaparHtml(String(c.sillonNuevo))}</li>`
+  ).join("");
+
+  const datosOtroDia = { ...datosBasicos, hueco: huecoOtroDia };
+  const datosConReacomodo = { ...datosBasicos, hueco: huecoDiaPedido, cambiosReacomodo: alternativa.cambios };
+
+  modal.innerHTML = `
+    <div style="background: white; margin: 20px auto; max-width: 600px; padding: 20px; border-radius: 8px;">
+      <h2 style="margin-top: 0;">El ${escaparHtml(fechaPedidaLegible)} está completo</h2>
+      <p>Hay dos formas de darle el turno:</p>
+
+      <div style="border: 1px solid var(--color-border, #ddd); border-radius: 6px; padding: 12px; margin-bottom: 12px;">
+        <div style="font-weight: 600; margin-bottom: 4px;">Otro día, sin mover a nadie</div>
+        <div style="margin-bottom: 10px;">${escaparHtml(huecoOtroDia.fechaLegible)} · ${escaparHtml(huecoOtroDia.horaInicio)} a ${escaparHtml(huecoOtroDia.horaFin)} · Sillón ${escaparHtml(String(huecoOtroDia.sillon))}</div>
+        <button type="button" class="boton-principal" style="width: 100%;"
+          onclick="elegirOtroDiaSinReacomodo(${JSON.stringify(datosOtroDia).replace(/"/g, '&quot;')})">
+          Dar el turno el ${escaparHtml(fechaCortaCarga(huecoOtroDia.fecha))}
+        </button>
+      </div>
+
+      <div style="border: 1px solid var(--color-border, #ddd); border-radius: 6px; padding: 12px; margin-bottom: 12px;">
+        <div style="font-weight: 600; margin-bottom: 4px;">El día pedido, reacomodando sillones</div>
+        <div style="margin-bottom: 6px;">${escaparHtml(huecoDiaPedido.fechaLegible)} · ${escaparHtml(huecoDiaPedido.horaInicio)} a ${escaparHtml(huecoDiaPedido.horaFin)} · Sillón ${escaparHtml(String(huecoDiaPedido.sillon))}</div>
+        <div style="font-size: 14px; color: var(--color-muted);">Cambian de sillón (mismo horario):</div>
+        <ul style="margin: 4px 0 10px; font-size: 14px;">${listaCambios}</ul>
+        <button type="button" class="boton-principal" style="width: 100%;"
+          onclick="confirmarYGuardarConReacomodo(${JSON.stringify(datosConReacomodo).replace(/"/g, '&quot;')})">
+          Reacomodar y dar el turno el ${escaparHtml(fechaCortaCarga(huecoDiaPedido.fecha))}
+        </button>
+      </div>
+
+      <button type="button" class="boton-secundario" onclick="cerrarModalSobreturno()">Cancelar</button>
+    </div>
+  `;
+  modal.style.display = "block";
+}
+
+async function elegirOtroDiaSinReacomodo(datosOtroDia) {
+  cerrarModalSobreturno();
+  await guardarTurnoConHueco(datosOtroDia, datosOtroDia.hueco, null);
 }
 
 async function confirmarYGuardarConReacomodo(datosConReacomodo) {
@@ -2307,7 +2412,11 @@ async function buscarYGuardarConHorarioManual(datosBasicos, horarioManualString,
     );
 
     if (resultado.exito) {
-      await guardarTurnoConHueco(datosBasicos, resultado.hueco, null);
+      // Etapa 5C (decisión de Elías): un turno con horario manual "se dio así por algo" —
+      // queda marcado (turno.horarioManual) y el reacomodo nunca lo mueve de sillón (ver
+      // calcularTurnosNoReacomodablesIds). En Reasignar, la marca viaja en el hueco hasta
+      // abrirMotivoReasignarGrilla (turnero-grilla.js).
+      await guardarTurnoConHueco(datosBasicos, { ...resultado.hueco, horarioManual: true }, null);
       return;
     }
 
@@ -2506,6 +2615,7 @@ async function guardarTurnoConHueco(datosBasicos, hueco, tipoSobreturno, cambios
       // Etapa 5C, punto 2.1 — solo se agrega cuando corresponde; el resto de los turnos
       // no lleva este campo en absoluto (no hace falta "internado: false" en cada uno).
       ...(datosBasicos.internado ? { internado: true } : {}),
+      ...(hueco.horarioManual === true ? { horarioManual: true } : {}), // Etapa 5C: ver buscarYGuardarConHorarioManual
       // Standard
       estado: "activo",
       creadoPor: { uid: usuarioActualCarga.uid, nombre: datosUsuarioActualCarga.nombre || usuarioActualCarga.email },

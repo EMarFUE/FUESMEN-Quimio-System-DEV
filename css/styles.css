@@ -1585,6 +1585,22 @@ h1 {
   color: #274a08;
 }
 
+/* Etapa 5C, ajuste del 2.1 (pedido de Elías): óvalo "Int." del internado en rojo, distinto
+   del celeste (sillón común) y del verde (backup). Mismo rojo base del sistema. */
+.badge-sillon-grilla.internado {
+  background: var(--color-danger);
+  color: #fff;
+}
+
+/* Etapa 5C: turno cargado con horario manual — solo en la vista diaria (en la tarjeta
+   semanal ya no entra). Mismo tamaño/tono discreto que .badge-reacomodo-grilla. */
+.badge-horario-manual-dia {
+  font-size: 12px;
+  line-height: 1;
+  color: var(--color-muted);
+  cursor: help;
+}
+
 /* Ronda "reacomodo automático de sillones": indicador discreto de que este turno cambió
    de sillón solo, sin que nadie lo haya tocado a mano — mismo criterio de tamaño/forma
    que .badge-sillon-grilla, para no competir visualmente con él. */

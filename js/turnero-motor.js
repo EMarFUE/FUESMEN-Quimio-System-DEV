@@ -1580,6 +1580,116 @@ function calcularReacomodoSillones(horaInicioCandidato, horaFinCandidato, turnos
   return { sillonCandidato: asignacion.get("__candidato__"), cambios };
 }
 
+// Etapa 5C (auditoría del motor, decisión de Elías) — búsqueda EXACTA del reacomodo.
+// calcularReacomodoSillones (arriba) colorea de a un turno por orden de llegada: siempre
+// da una solución válida cuando la devuelve, pero medido contra el óptimo por fuerza
+// bruta (1) a veces dice "no entra" cuando sí entraba (~1,6% de los días factibles: pasa
+// solo cuando hay turnos fijos o bloqueos de por medio) y (2) a veces mueve más pacientes
+// de lo necesario (~11% de los casos, hasta 3 de más). Esta función busca, con
+// backtracking, la asignación válida que mueve la MENOR cantidad posible de turnos.
+//
+// Seguridad: tiene un límite de nodos. Si se agota antes de terminar, devuelve la mejor
+// solución válida que haya encontrado (o null si no encontró ninguna) — nunca una
+// inválida. cotaCambios: si se pasa, solo busca soluciones que muevan ESTRICTAMENTE
+// menos turnos que eso (la del barrido ya se tiene).
+const LIMITE_NODOS_REACOMODO_EXACTO = 20000;
+
+function calcularReacomodoSillonesExacto(horaInicioCandidato, horaFinCandidato, turnosFijos, turnosReacomodables, sillonesDisponibles, cotaCambios) {
+  const fijos = (turnosFijos || []).map(t => ({
+    sillon: t.sillon, inicio: minutoDesdeString(t.horarioInicio), fin: minutoDesdeString(t.horarioFin)
+  }));
+  const items = [
+    ...(turnosReacomodables || []).map(t => ({
+      id: t.id, sillonOriginal: t.sillon,
+      inicio: minutoDesdeString(t.horarioInicio), fin: minutoDesdeString(t.horarioFin)
+    })),
+    { id: "__candidato__", sillonOriginal: null, inicio: horaInicioCandidato, fin: horaFinCandidato }
+  ].sort((a, b) => a.inicio - b.inicio);
+
+  // Dominio de cada intervalo: sillones que ningún fijo ocupa en su tramo; el original
+  // primero (no cuesta un cambio).
+  for (const it of items) {
+    const libres = sillonesDisponibles.filter(sl =>
+      !fijos.some(f => f.sillon === sl && it.inicio < f.fin && it.fin > f.inicio)
+    );
+    it.dominio = (it.sillonOriginal != null && libres.includes(it.sillonOriginal))
+      ? [it.sillonOriginal, ...libres.filter(sl => sl !== it.sillonOriginal)]
+      : libres;
+    if (it.dominio.length === 0) return null; // ese intervalo no entra en ningún sillón
+  }
+
+  let mejorCosto = (typeof cotaCambios === "number") ? cotaCambios : Infinity;
+  let mejorAsignacion = null;
+  let nodos = 0;
+  const asignado = new Array(items.length);
+
+  function recorrer(i, costo) {
+    if (costo >= mejorCosto) return;
+    if (nodos++ > LIMITE_NODOS_REACOMODO_EXACTO) return;
+    if (i === items.length) { mejorCosto = costo; mejorAsignacion = asignado.slice(); return; }
+    const it = items[i];
+    for (const sl of it.dominio) {
+      let choca = false;
+      for (let j = 0; j < i; j++) {
+        if (asignado[j] === sl && items[j].fin > it.inicio && items[j].inicio < it.fin) { choca = true; break; }
+      }
+      if (choca) continue;
+      asignado[i] = sl;
+      recorrer(i + 1, costo + (it.sillonOriginal != null && sl !== it.sillonOriginal ? 1 : 0));
+      if (costo >= mejorCosto) break; // ya no puede mejorar por esta rama
+    }
+    asignado[i] = undefined;
+  }
+  recorrer(0, 0);
+  if (!mejorAsignacion) return null;
+
+  const porId = new Map(items.map((it, k) => [it.id, mejorAsignacion[k]]));
+  const cambios = (turnosReacomodables || [])
+    .filter(t => porId.get(t.id) !== t.sillon)
+    .map(t => ({ turnoId: t.id, sillonAnterior: t.sillon, sillonNuevo: porId.get(t.id) }));
+  return { sillonCandidato: porId.get("__candidato__"), cambios };
+}
+
+// Chequeo rápido y necesario (no suficiente): en cada instante del tramo del candidato,
+// los turnos reacomodables activos + el candidato no pueden superar los sillones que los
+// fijos dejan libres en ese instante. Si falla, es imposible que entre — se evita
+// gastar la búsqueda exacta en horarios sin ninguna chance.
+function capacidadAlcanzaParaReacomodo(horaInicioCandidato, horaFinCandidato, turnosFijos, turnosReacomodables, sillonesDisponibles) {
+  const puntos = new Set([horaInicioCandidato]);
+  for (const t of [...(turnosFijos || []), ...(turnosReacomodables || [])]) {
+    const ini = minutoDesdeString(t.horarioInicio);
+    if (ini > horaInicioCandidato && ini < horaFinCandidato) puntos.add(ini);
+  }
+  for (const x of puntos) {
+    const ocupadosFijos = new Set();
+    for (const f of (turnosFijos || [])) {
+      if (minutoDesdeString(f.horarioInicio) <= x && minutoDesdeString(f.horarioFin) > x) ocupadosFijos.add(f.sillon);
+    }
+    const libres = sillonesDisponibles.filter(sl => !ocupadosFijos.has(sl)).length;
+    const activos = (turnosReacomodables || []).filter(t =>
+      minutoDesdeString(t.horarioInicio) <= x && minutoDesdeString(t.horarioFin) > x
+    ).length + 1;
+    if (activos > libres) return false;
+  }
+  return true;
+}
+
+// Combina las dos: primero el barrido de siempre (rápido); si no entra, o si entra pero
+// moviendo turnos, se intenta la búsqueda exacta para encontrar una solución (o una que
+// mueva menos). Nunca empeora el resultado del barrido.
+function calcularReacomodoSillonesOptimo(horaInicioCandidato, horaFinCandidato, turnosFijos, turnosReacomodables, sillonesDisponibles) {
+  const barrido = calcularReacomodoSillones(horaInicioCandidato, horaFinCandidato, turnosFijos, turnosReacomodables, sillonesDisponibles);
+  if (barrido && barrido.cambios.length === 0) return barrido;
+  if (!barrido && !capacidadAlcanzaParaReacomodo(horaInicioCandidato, horaFinCandidato, turnosFijos, turnosReacomodables, sillonesDisponibles)) {
+    return null;
+  }
+  const exacto = calcularReacomodoSillonesExacto(
+    horaInicioCandidato, horaFinCandidato, turnosFijos, turnosReacomodables, sillonesDisponibles,
+    barrido ? barrido.cambios.length : undefined
+  );
+  return exacto || barrido;
+}
+
 // Envoltorio de alto nivel: intenta primero buscarHuecos() tal cual (sin tocar nada), y
 // solo si falla por falta de disponibilidad FÍSICA (nunca si la causa es atadura, cupo,
 // franja o el bloqueo por paciente — el reacomodo de sillones no puede arreglar ninguna
@@ -1716,7 +1826,7 @@ async function buscarHuecosConReacomodo(
             (limiteInicioFranja === null || minutoActual <= limiteInicioFranja);
           minutoActual += GRANO_MINUTOS
         ) {
-          const reacomodo = calcularReacomodoSillones(
+          const reacomodo = calcularReacomodoSillonesOptimo( // Etapa 5C: barrido + búsqueda exacta
             minutoActual, minutoActual + duracionNormalizada, todosLosFijos, turnosRealesReacomodables, sillones
           );
           if (reacomodo) {
@@ -1770,6 +1880,9 @@ if (typeof module !== "undefined" && module.exports) {
     validarModificacionTurno,
     buscarSillonHorarioFijo,
     calcularReacomodoSillones,
+    calcularReacomodoSillonesExacto,
+    calcularReacomodoSillonesOptimo,
+    capacidadAlcanzaParaReacomodo,
     buscarHuecosConReacomodo,
     minutoDesdeString,
     stringDesdeMinuto,

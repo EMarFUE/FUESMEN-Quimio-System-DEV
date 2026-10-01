@@ -565,6 +565,12 @@ function calcularLanesDiaGrilla(turnosDelDia) {
 // tiene ninguno — queda pendiente para una próxima ronda).
 function puedeEditarTurnoGrilla(turno) {
   if (rolActualGrilla === "administrador" || rolActualGrilla === "enfermeria") return true;
+  // Etapa 5C, ajuste del 2.1 (decisión de Elías): con un internado solo interactúan
+  // administrador y enfermería — el médico ya no puede Modificar/Eliminar/Reasignar ni
+  // arrastrar un internado, aunque sea propio (antes podía Modificar/Eliminar). Ve el
+  // detalle igual. Restricción de interfaz, mismo criterio que todo el 2.1 (firestore.rules
+  // no cambia).
+  if (turno && turno.internado) return false;
   if (rolActualGrilla === "medico") {
     if (!datosUsuarioActualGrilla.medicoId || turno.medicoId !== datosUsuarioActualGrilla.medicoId) return false;
     // Permiso nuevo: si el administrador deshabilitó a este médico para cargar/modificar
@@ -718,7 +724,9 @@ function renderizarTarjetaTurnoGrilla(turno, minutoApertura, sede, laneInfo) {
   // Etapa 5C, punto 2.1 — un internado también tiene sillon: null (igual que un
   // sobreturno sin disponibilidad), pero mostrar "S?" ahí confundiría los dos casos —
   // uno es "no encontramos sillón", el otro es "nunca se buscó ninguno a propósito".
-  const textoSillon = turno.internado ? "Internado" : (turno.sillon != null ? `S${turno.sillon}` : "S?");
+  // Etapa 5C, ajuste del 2.1 (pedido de Elías): "Int." en vez de "Internado" (no entraba
+  // en la tarjeta), con óvalo de color propio (.badge-sillon-grilla.internado).
+  const textoSillon = turno.internado ? "Int." : (turno.sillon != null ? `S${turno.sillon}` : "S?");
 
   // Ronda "reacomodo automático de sillones": este turno cambió de sillón sin que nadie
   // lo haya tocado a mano (turno.reacomodo, embebido — ver guardarTurnoConHueco en
@@ -798,7 +806,7 @@ function renderizarTarjetaTurnoGrilla(turno, minutoApertura, sede, laneInfo) {
       data-turno-id="${turno.id}" ${accionClic}>
       ${checkboxPresenteHtml}
       ${badgeNotasHtml}
-      <span class="badge-sillon-grilla ${esBackup ? "backup" : ""}">${textoSillon}</span>
+      <span class="badge-sillon-grilla ${esBackup ? "backup" : ""} ${turno.internado ? "internado" : ""}" ${turno.internado ? `title="Internado (no ocupa sillón)"` : ""}>${textoSillon}</span>
       ${fueReacomodado ? `<span class="badge-reacomodo-grilla" title="Sillón reasignado automáticamente (antes: sillón ${turno.reacomodo.sillonAnterior})">↻</span>` : ""}
       <span class="apellido-turno-grilla">${escaparHtmlGrilla(nombreMostrado)}</span>
     </div>
@@ -1250,9 +1258,12 @@ function confirmarArrastreGrilla(turno, candidato) {
     // (Occhipinti) el motor puede haber elegido la otra sede.
     sedeId: hueco.sedeId,
     sedeNombre: hueco.sedeNombre,
-    tipoSobreturno: null // un hueco de la grilla semanal es un sillón físico real, salvo
+    tipoSobreturno: null, // un hueco de la grilla semanal es un sillón físico real, salvo
     // cuando es el candidato armado para un internado (sillon: null a propósito, ver
     // actualizarCandidatoArrastreGrilla) — tipoSobreturno sigue en null en los dos casos
+    // Etapa 5C (decisión de Elías): al arrastrarlo, su horario pasa a ser el que eligió
+    // el sistema/la grilla — deja de ser "horario manual" y vuelve a poder reacomodarse.
+    horarioManual: false
   }, "arrastre", `Vas a mover el turno de ${paciente} a ${hueco.fechaLegible || hueco.fecha}, ${hueco.horaInicio}hs.`, "Confirmar reasignación");
 }
 
@@ -1611,7 +1622,11 @@ function abrirMotivoReasignarGrilla(datosBasicos, hueco, tipoSobreturno) {
     // Un hueco encontrado por el motor siempre es un sillón físico real, o (si viene de
     // un sobreturno confirmado) explícito como tal — nunca hereda un tipoSobreturno
     // viejo que ya no corresponde.
-    tipoSobreturno: tipoSobreturno || null
+    tipoSobreturno: tipoSobreturno || null,
+    // Etapa 5C (decisión de Elías): "Cargar a la fecha y hora exactas" marca el turno
+    // como horario manual (hueco.horarioManual, ver buscarYGuardarConHorarioManual en
+    // turnero-carga.js); "Buscar disponibilidad" la apaga — su horario lo eligió el motor.
+    horarioManual: hueco.horarioManual === true
   }, "reasignarFormulario", `Vas a reasignar el turno de ${paciente} a ${hueco.fechaLegible || hueco.fecha}, ${hueco.horaInicio}hs.`, "Confirmar reasignación");
 }
 
@@ -2686,6 +2701,8 @@ function abrirDetalleTurnoGrilla(turnoId) {
     // "Internado: No" en un turno común, mismo criterio que el resto de filas
     // condicionales de abajo).
     ...(turno.internado ? [["Internado", "Sí — no ocupa sillón, no imprime comprobante"]] : []),
+    // Etapa 5C: se cargó con horario manual — no se mueve de sillón en un reacomodo.
+    ...(turno.horarioManual === true ? [["Horario manual", "Sí — no se reacomoda de sillón"]] : []),
     // Etapa 5C, punto 2.6 — mismas etiqueta y fuente de datos que "Protocolo(s)" y
     // "Tiempo estimado de tratamiento" en el comprobante. Siempre visibles (con "-" si
     // el turno no tiene el dato, p. ej. turnos viejos), a diferencia de las filas
@@ -2730,7 +2747,8 @@ function abrirDetalleTurnoGrilla(turnoId) {
   const ETIQUETAS_PRIORIDAD_DETALLE_GRILLA = { rojo: "🔴 Rojo", amarillo: "🟡 Amarillo", verde: "🟢 Verde" };
   const puedeVerPrioridadDetalle = true; // todos los roles la ven; la edición se decide aparte (puedeEditarPrioridadDetalle)
   const puedeEditarPrioridadDetalle = rolActualGrilla === "administrador" ||
-    (rolActualGrilla === "medico" && !!turno.medicoId && datosUsuarioActualGrilla && turno.medicoId === datosUsuarioActualGrilla.medicoId);
+    (rolActualGrilla === "medico" && !turno.internado && // Etapa 5C: internado, sin interacción del médico
+      !!turno.medicoId && datosUsuarioActualGrilla && turno.medicoId === datosUsuarioActualGrilla.medicoId);
   let filaPrioridadHtml = "";
   if (puedeVerPrioridadDetalle) {
     if (puedeEditarPrioridadDetalle) {
@@ -2830,12 +2848,23 @@ function raizNotasDeTurnoGrilla(turnoId) {
   return (turno && turno.notasTurnoId) || turnoId;
 }
 
+// Etapa 5C, ajuste del 2.1 (decisión de Elías): con un internado solo interactúan
+// administrador y enfermería — el médico ve los comentarios pero no agrega, edita ni borra.
+function notasSoloLecturaGrilla(turnoId) {
+  if (rolActualGrilla !== "medico") return false;
+  const turno = (turnosCacheGrilla || []).find(t => t.id === turnoId);
+  return !!(turno && turno.internado);
+}
+
 async function abrirNotasTurnoGrilla(turnoId) {
   turnoIdNotasActualGrilla = turnoId;
   raizNotasActualGrilla = raizNotasDeTurnoGrilla(turnoId);
   document.getElementById("overlay-notas-turno-grilla").style.display = "flex";
   document.getElementById("lista-notas-turno-grilla").innerHTML = `<p style="color:var(--color-muted);font-size:13px;">Cargando…</p>`;
   cerrarFormularioNuevaNotaGrilla();
+  if (notasSoloLecturaGrilla(turnoId)) {
+    document.getElementById("boton-abrir-nueva-nota-grilla").style.display = "none";
+  }
 
   try {
     const snapshot = await db.collection("turnos").doc(raizNotasActualGrilla).collection("notas").orderBy("creadoEn", "asc").get();
@@ -2855,7 +2884,7 @@ function renderizarListaNotasGrilla() {
   }
   contenedor.innerHTML = notasCacheGrilla.map((nota) => {
     const esPropia = usuarioActualGrilla && nota.autorUid === usuarioActualGrilla.uid;
-    const accionesHtml = esPropia
+    const accionesHtml = (esPropia && !notasSoloLecturaGrilla(turnoIdNotasActualGrilla))
       ? `<button type="button" class="enlace-accion" style="font-size:12px;" onclick="iniciarEdicionNotaGrilla('${nota.id}')">Editar</button>
          <button type="button" class="enlace-accion peligro" style="font-size:12px;" onclick="borrarNotaTurnoGrilla('${nota.id}')">Borrar</button>`
       : "";
@@ -2894,6 +2923,7 @@ function cerrarFormularioNuevaNotaGrilla() {
 }
 
 async function guardarNuevaNotaTurnoGrilla() {
+  if (notasSoloLecturaGrilla(turnoIdNotasActualGrilla)) return; // resguardo — el botón ya está oculto
   const campoTexto = document.getElementById("campo-nueva-nota-grilla");
   const texto = campoTexto.value.trim();
   if (!texto) return;
@@ -2922,6 +2952,7 @@ async function guardarNuevaNotaTurnoGrilla() {
 }
 
 function iniciarEdicionNotaGrilla(notaId) {
+  if (notasSoloLecturaGrilla(turnoIdNotasActualGrilla)) return; // Etapa 5C: internado, solo lectura para el médico
   const nota = notasCacheGrilla.find(n => n.id === notaId);
   if (!nota) return;
   const fila = document.getElementById(`fila-nota-${notaId}`);
@@ -2935,6 +2966,7 @@ function iniciarEdicionNotaGrilla(notaId) {
 }
 
 async function guardarEdicionNotaGrilla(notaId) {
+  if (notasSoloLecturaGrilla(turnoIdNotasActualGrilla)) return; // Etapa 5C: internado, solo lectura para el médico
   const campoTexto = document.getElementById(`campo-editar-nota-${notaId}`);
   const texto = campoTexto.value.trim();
   if (!texto) return;
@@ -2951,6 +2983,7 @@ async function guardarEdicionNotaGrilla(notaId) {
 }
 
 async function borrarNotaTurnoGrilla(notaId) {
+  if (notasSoloLecturaGrilla(turnoIdNotasActualGrilla)) return; // Etapa 5C: internado, solo lectura para el médico
   try {
     const turnoRef = db.collection("turnos").doc(turnoIdNotasActualGrilla);
     const batch = db.batch();
