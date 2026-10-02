@@ -87,15 +87,20 @@ function armarHtmlFormularioCarga() {
         <label for="campo-medico">Médico</label>
         <select id="campo-medico"></select>
       </div>
-      <div class="campo" style="margin-bottom:0;">
+      <div class="campo" id="bloque-sede-carga" style="margin-bottom:0;">
         <label>Sede</label>
-        <div id="sede-automatica-info" style="display:none;padding-top:8px;">
-          <span class="badge" id="badge-sede-automatica"></span>
+        <div id="contenido-sede-carga">
+          <div id="sede-automatica-info" style="display:none;padding-top:8px;">
+            <span class="badge" id="badge-sede-automatica"></span>
+          </div>
+          <div id="aviso-sede-indefinida" class="ayuda-carga" style="display:none;">
+            Este médico no tiene días cargados en ninguna sede. Elegí la sede a mano.
+          </div>
+          <select id="campo-sede-manual" aria-label="Sede" style="display:none;"></select>
         </div>
-        <div id="aviso-sede-indefinida" class="ayuda-carga" style="display:none;">
-          Este médico no tiene días cargados en ninguna sede. Elegí la sede a mano.
+        <div id="nota-sede-internado" class="ayuda-carga nota-sede-internado" style="display:none;">
+          Un paciente internado se carga siempre en Emilio Civit.
         </div>
-        <select id="campo-sede-manual" aria-label="Sede" style="display:none;"></select>
       </div>
     </div>
     <div class="campo" id="bloque-medico-otro" style="display:none;">
@@ -259,6 +264,12 @@ function montarFormularioCarga(idContenedor) {
   ["input", "change", "click"].forEach((evento) => {
     contenedor.addEventListener(evento, programarActualizacionResumenCarga);
   });
+  // Un aviso viejo de la cabecera (un error, o "Turno guardado") se va apenas se vuelve a tocar el
+  // formulario. Solo al ESCRIBIR o CAMBIAR algo — nunca en un clic: el clic en "Guardar" muestra el
+  // aviso nuevo, y borrarlo en ese momento lo taparía.
+  ["input", "change"].forEach((evento) => {
+    contenedor.addEventListener(evento, () => { if (typeof ocultarMensajeGeneral === "function") ocultarMensajeGeneral(); });
+  });
   sincronizarFormularioCarga();
 }
 
@@ -342,6 +353,12 @@ function sincronizarFormularioCarga() {
   const permiteRetro = typeof puedeCargarEnFechaPasadaCarga === "function" && puedeCargarEnFechaPasadaCarga();
   const notaRetro = document.getElementById("nota-fecha-retroactiva");
   if (notaRetro) notaRetro.style.display = permiteRetro ? "block" : "none";
+
+  // Un internado se carga SIEMPRE en Emilio Civit: se avisa y la sede de arriba queda atenuada (se ignora)
+  const notaSede = document.getElementById("nota-sede-internado");
+  if (notaSede) notaSede.style.display = internado ? "block" : "none";
+  const contSede = document.getElementById("contenido-sede-carga");
+  if (contSede) contSede.classList.toggle("atenuado", internado);
 
   // Lugar
   const lugar = internado ? "internado" : (backup ? "backup" : "sillon");
@@ -438,7 +455,9 @@ function partesResumenCarga(estado) {
     partes.push({ texto: `${nombres} (${formatearMinutosCarga(suma + extra)})` });
   }
 
-  if (visibleCarga("sede-automatica-info")) {
+  if (estado.internado) {
+    partes.push({ texto: typeof SEDE_CIVIT_NOMBRE !== "undefined" ? SEDE_CIVIT_NOMBRE : "Emilio Civit" });
+  } else if (visibleCarga("sede-automatica-info")) {
     const t = (document.getElementById("badge-sede-automatica").textContent || "").trim();
     if (t) partes.push({ texto: t });
   } else if (visibleCarga("campo-sede-manual")) {

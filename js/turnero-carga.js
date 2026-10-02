@@ -172,6 +172,39 @@ function puedeCargarEnFechaPasadaCarga() {
   return rolActualCarga === "administrador" || rolActualCarga === "enfermeria";
 }
 
+// La sede Emilio Civit del sistema: por su id (el que ya usa el motor para la regla de POP) y, si
+// no, por su nombre — así no depende de un único identificador. null si no está cargada.
+function sedeCivitCarga() {
+  return sedesCacheCarga.find((s) => s.id === SEDE_CIVIT_ID)
+    || sedesCacheCarga.find((s) => s.nombre === SEDE_CIVIT_NOMBRE)
+    || null;
+}
+
+// "Paciente internado" tildado (solo administrador/enfermería pueden usarlo).
+function internadoTildadoCarga() {
+  const campo = document.getElementById("campo-internado");
+  return !!(campo && (rolActualCarga === "administrador" || rolActualCarga === "enfermeria") && campo.checked);
+}
+
+// Oculta el aviso de la cabecera del formulario (nuevo turno) y lo deja limpio, para que un
+// aviso viejo no se arrastre de una carga a la siguiente. No hace nada si no hay aviso.
+function ocultarMensajeGeneral() {
+  const el = document.getElementById("mensaje-general");
+  if (!el || el.style.display === "none") return;
+  el.style.display = "none";
+  el.textContent = "";
+  el.className = "mensaje-info";
+}
+
+// Reasignar no admite horas pasadas de hoy. Para los turnos con sillón lo rechaza el motor
+// (buscarSillonHorarioFijo); un INTERNADO no pasa por el motor, así que se controla acá.
+function mensajeHoraPasadaReasignarCarga(fechaISO, horaString) {
+  const ahora = ahoraParaMotor();
+  if (fechaISO !== ahora.fechaISO || !horaString) return null;
+  if (minutoDesdeString(horaString) >= ahora.minuto) return null;
+  return `Esa hora ya pasó (ahora son las ${stringDesdeMinuto(ahora.minuto)}). Elegí una hora de ahí en adelante.`;
+}
+
 // null si la fecha se puede usar; si no, el aviso que corresponde.
 function mensajeFechaPasadaCarga(fechaISO, { modoReasignar, horarioManual, esInternado }) {
   if (!fechaISO || fechaISO >= fechaLocalHoy()) return null;
@@ -937,8 +970,11 @@ function actualizarBloqueMedico() {
 // --- Protocolos ---
 
 function agregarFilaProtocolo() {
-  const id = `fila-protocolo-${contadorFilasProtocolo++}`;
+  const id = `fila-protocolo-${contadorFilasProtocolo++}`; // el contador solo garantiza ids únicos
   const lista = document.getElementById("lista-protocolos");
+  // La etiqueta que se ve es la POSICIÓN en la lista (1, 2, 3…), no el contador: antes seguía
+  // sumando de un turno al siguiente ("protocolo 4" en un formulario recién abierto).
+  const numeroVisible = lista.querySelectorAll(".fila-medicamento").length + 1;
 
   const fila = document.createElement("div");
   fila.id = id;
@@ -946,7 +982,7 @@ function agregarFilaProtocolo() {
 
   fila.innerHTML = `
     <div class="fila-medicamento-encabezado">
-      <span>protocolo ${contadorFilasProtocolo}</span>
+      <span>protocolo ${numeroVisible}</span>
       <button type="button" class="enlace-accion peligro" data-quitar="${id}">quitar</button>
     </div>
     <div class="campo" style="margin-bottom:0;">
@@ -1165,7 +1201,16 @@ function quitarFilaProtocolo(filaId) {
   }
   delete protocolosSeleccionados[filaId];
   document.getElementById(filaId).remove();
+  renumerarFilasProtocolo();
   actualizarResumenDuracion();
+}
+
+// Deja las etiquetas en 1, 2, 3… según el orden actual (al quitar una fila del medio no queda un hueco).
+function renumerarFilasProtocolo() {
+  document.querySelectorAll("#lista-protocolos .fila-medicamento").forEach((fila, i) => {
+    const etiqueta = fila.querySelector(".fila-medicamento-encabezado span");
+    if (etiqueta) etiqueta.textContent = `protocolo ${i + 1}`;
+  });
 }
 
 function actualizarResumenDuracion() {
@@ -1314,7 +1359,16 @@ async function intentarGuardarTurno() {
   let sedeId, sedeNombre, sedeAutomatica;
   const selectSedeManual = document.getElementById("campo-sede-manual");
 
-  if (medicoValor === MEDICO_OCCHIPINTI_ID) {
+  if (internadoTildadoCarga()) {
+    // Etapa 5C (cierre, pedido de Elías): un INTERNADO se carga SIEMPRE en Emilio Civit, sea cual
+    // sea el médico, la sede que atienda o la obra social del paciente (ni siquiera se pide
+    // elegir sede). Reasignar un internado, en cambio, conserva la sede del turno.
+    // Si la sede no está cargada en el sistema, guardarTurnoInternado lo avisa y no guarda nada.
+    const sedeCivit = sedeCivitCarga();
+    sedeId = sedeCivit ? sedeCivit.id : null;
+    sedeNombre = sedeCivit ? sedeCivit.nombre : null;
+    sedeAutomatica = false;
+  } else if (medicoValor === MEDICO_OCCHIPINTI_ID) {
     // Occhipinti: la sede la determina el motor según la obra social del paciente
     // (Handoff_etapa_T0.md, decisión 4). No se exige selección manual.
     sedeId = null;
@@ -2543,15 +2597,16 @@ async function guardarTurnoInternado(datosBasicos, horarioManualString) {
   let sedeId = datosBasicos.sedeId;
   let sedeNombre = datosBasicos.sedeNombre;
 
-  if (recalcularSedeOcchipinti(datosBasicos)) { // en Reasignar se respeta la sede del turno
-    const sedesCandidatas = await determinarSedesABuscar(
-      MEDICO_OCCHIPINTI_ID,
-      datosBasicos.pacienteObraSocial || "",
-      medicosCacheCarga
-    );
-    sedeId = sedesCandidatas[0];
-    const sedeDoc = sedesCacheCarga.find((s) => s.id === sedeId);
-    sedeNombre = sedeDoc ? sedeDoc.nombre : sedeId;
+  // Etapa 5C (cierre, pedido de Elías): un internado NUEVO va SIEMPRE a Emilio Civit (antes, el de
+  // Occhipinti seguía la regla de la obra social). Al REASIGNAR se respeta la sede del turno.
+  if (!datosBasicos.modoReasignar) {
+    const sedeCivit = sedeCivitCarga();
+    if (!sedeCivit) {
+      mostrarMensajeGeneral(`No se encontró la sede ${SEDE_CIVIT_NOMBRE} en el sistema: un internado se carga siempre ahí.`, "error");
+      return;
+    }
+    sedeId = sedeCivit.id;
+    sedeNombre = sedeCivit.nombre;
   }
 
   const horaFinString = stringDesdeMinuto(minutoDesdeString(horarioManualString) + datosBasicos.duracionTotalMinutos);
@@ -2564,7 +2619,7 @@ async function guardarTurnoInternado(datosBasicos, horarioManualString) {
     horaFin: horaFinString,
     sillon: null
   };
-  await guardarTurnoConHueco({ ...datosBasicos, internado: true }, hueco, null);
+  await guardarTurnoConHueco({ ...datosBasicos, sedeId, sedeNombre, internado: true }, hueco, null);
 }
 
 async function buscarYGuardarConHorarioManual(datosBasicos, horarioManualString, soloBackup, opciones) {

@@ -2629,3 +2629,7 @@ h1 {
 }
 
 .resumen-carga .boton-principal:disabled { opacity: 0.6; cursor: default; }
+
+/* Etapa 5C (cierre): la sede elegida arriba se ignora cuando el turno es un internado (va siempre a Emilio Civit). */
+.atenuado { opacity: 0.45; }
+.nota-sede-internado { margin-top: 6px; font-weight: 500; color: var(--color-danger); }
