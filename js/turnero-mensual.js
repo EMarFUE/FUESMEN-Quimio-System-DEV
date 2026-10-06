@@ -1,3 +1,4 @@
+(window.TURNERO_BUILD = window.TURNERO_BUILD || {}).mensual = "5C-2026-10-01-c"; // marca de versión de este archivo (ver verificarVersionesTurnero)
 // Etapa 5, fase 1 — vista mensual de la agenda (turnero/agenda-mensual.html).
 //
 // Pantalla de SOLO CONSULTA (decisión con Elías): no arrastra ni edita turnos. Cada día
@@ -141,6 +142,7 @@ function urlAgendaDiaMensual(fechaISOTexto) {
 
 async function iniciarAgendaMensual(user, datosUsuario) {
   rolActualMensual = datosUsuario.rol;
+  crearBotonNuevoTurnoMensual(); // Etapa 5C (2.3)
   const contenedor = document.getElementById("grilla-mensual-contenedor");
 
   try {
@@ -220,13 +222,51 @@ async function actualizarMesMensual() {
   await cargarYRenderizarMensual(true);
 }
 
+// Fecha a la que llevan "Ver semana" y "+ Nuevo turno": hoy si el mes visible es el actual, o el
+// día 1 del mes visible.
+function fechaReferenciaMensual() {
+  const hoy = new Date();
+  const esMesActual = hoy.getFullYear() === anioVisibleMensual && hoy.getMonth() === mesVisibleMensual;
+  return esMesActual ? hoy : new Date(anioVisibleMensual, mesVisibleMensual, 1);
+}
+
 // "Ver semana": vuelve a agenda.html en hoy (si el mes visible es el actual) o en el día 1
 // del mes visible.
 function irASemanaDesdeMesMensual() {
-  const hoy = new Date();
-  const esMesActual = hoy.getFullYear() === anioVisibleMensual && hoy.getMonth() === mesVisibleMensual;
-  const fecha = esMesActual ? hoy : new Date(anioVisibleMensual, mesVisibleMensual, 1);
-  window.location.href = urlAgendaSemanaMensual(fechaISO(fecha), null);
+  window.location.href = urlAgendaSemanaMensual(fechaISO(fechaReferenciaMensual()), null);
+}
+
+// Etapa 5C (2.3, decisión de Elías): botón "+ Nuevo turno" en el encabezado de la vista mensual. La
+// mensual es de solo consulta y no tiene formulario propio: el botón lleva a la agenda (misma sede y
+// médico, en la fecha de referencia) con ?nuevo=1, y la agenda abre el formulario (ver iniciarAgenda
+// en turnero-grilla.js). Administrativo no lo ve, igual que en la agenda.
+function urlNuevoTurnoDesdeMensual() {
+  return `${urlAgendaSemanaMensual(fechaISO(fechaReferenciaMensual()), null)}&nuevo=1`;
+}
+
+function irAUrlMensual(url) {
+  window.location.href = url;
+}
+
+function irANuevoTurnoDesdeMensual() {
+  irAUrlMensual(urlNuevoTurnoDesdeMensual());
+}
+
+// Crea el botón junto a "Actualizar" (mismo encabezado). Se arma por código porque la página
+// (agenda-mensual.html) no se modifica. No hace nada si ya existe o si el rol no puede cargar.
+function crearBotonNuevoTurnoMensual() {
+  if (rolActualMensual === "administrativo" || document.getElementById("boton-nuevo-turno-mensual")) return;
+  const referencia = document.getElementById("boton-actualizar-mensual");
+  const contenedor = referencia ? referencia.parentNode : (document.getElementById("grilla-mensual-contenedor") || {}).parentNode;
+  if (!contenedor) return;
+  const boton = document.createElement("button");
+  boton.type = "button";
+  boton.id = "boton-nuevo-turno-mensual";
+  boton.className = "boton-principal boton-nuevo-turno-barra";
+  boton.style.width = "auto";
+  boton.textContent = "+ Nuevo turno";
+  boton.addEventListener("click", irANuevoTurnoDesdeMensual);
+  contenedor.insertBefore(boton, referencia || contenedor.firstChild);
 }
 
 // Etapa 5 — botón "Día" del selector de vista: abre hoy si el mes visible es el actual, o el

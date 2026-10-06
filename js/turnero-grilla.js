@@ -1,3 +1,4 @@
+(window.TURNERO_BUILD = window.TURNERO_BUILD || {}).grilla = "5C-2026-10-01-c"; // marca de versión de este archivo (ver verificarVersionesTurnero)
 // Vista de agenda semanal — Etapa T6 del Módulo de Turnero.
 // Fase 1 (de 3): grilla de solo lectura. Elegir sede, navegar la semana, ver los
 // turnos ya cargados como tarjetas dentro de su día y horario, con el sillón
@@ -185,15 +186,18 @@ async function iniciarAgenda(user, datosUsuario) {
     await cargarYRenderizarGrilla();
   }
   if (parametrosUrl.turnoId) abrirDetalleTurnoGrilla(parametrosUrl.turnoId); // si ese turno no está en lo cargado, no hace nada
+  // Etapa 5C (2.3): el botón "+ Nuevo turno" de la vista mensual llega con ?nuevo=1. Administrativo no
+  // tiene formulario de carga (solo lectura), así que para ese rol no se abre nada.
+  if (parametrosUrl.nuevoTurno && rolActualGrilla !== "administrativo") await abrirModalNuevoTurnoGrilla();
 }
 
-// Etapa 5 — lee ?sede=&fecha=&medico=&turno=&vista= (los arma turnero-mensual.js), los
+// Etapa 5 — lee ?sede=&fecha=&medico=&turno=&vista=&nuevo= (los arma turnero-mensual.js), los
 // aplica al estado de la grilla y limpia la URL para que recargar la página no vuelva a
 // abrir el detalle. Devuelve { turnoId, vista, fecha }: el turno pedido (o null), "dia" si
 // se pidió la vista de día (si no, null) y la fecha ya validada (o null). Valores inválidos
 // se ignoran.
 function aplicarParametrosUrlGrilla() {
-  const resultado = { turnoId: null, vista: null, fecha: null };
+  const resultado = { turnoId: null, vista: null, fecha: null, nuevoTurno: false };
   if (!window.location.search) return resultado;
   const params = new URLSearchParams(window.location.search);
 
@@ -216,6 +220,7 @@ function aplicarParametrosUrlGrilla() {
 
   resultado.turnoId = params.get("turno") || null;
   resultado.vista = params.get("vista") === "dia" ? "dia" : null;
+  resultado.nuevoTurno = params.get("nuevo") === "1"; // Etapa 5C (2.3): abrir el formulario de nuevo turno
   window.history.replaceState(null, "", window.location.pathname);
   return resultado;
 }
@@ -326,6 +331,8 @@ function cambiarFiltroMedicoGrilla(valor) {
 // listeners duplicados o duplicar filas de protocolo.
 
 async function abrirModalNuevoTurnoGrilla() {
+  // Un aviso de la carga anterior (error o "Turno guardado") no se arrastra al formulario nuevo.
+  if (typeof ocultarMensajeGeneral === "function") ocultarMensajeGeneral();
   const overlay = document.getElementById("overlay-nuevo-turno-grilla");
   overlay.style.display = "flex";
   // Bug reportado por Elías: al reabrir para cargar el turno siguiente, el modal
@@ -349,6 +356,7 @@ async function abrirModalNuevoTurnoGrilla() {
 }
 
 function cerrarModalNuevoTurnoGrilla() {
+  if (typeof ocultarMensajeGeneral === "function") ocultarMensajeGeneral();
   document.getElementById("overlay-nuevo-turno-grilla").style.display = "none";
   cargarYRenderizarGrilla(); // por si se guardó algún turno mientras estaba abierto
 }
@@ -1573,6 +1581,11 @@ async function buscarReasignarHorarioManualGrilla() {
   boton.disabled = true;
   try {
     if (esInternado) {
+      // Etapa 5C (cierre): un internado no pasa por el motor, así que el "Reasignar no admite el
+      // pasado" (fecha ni hora de hoy ya pasada) se controla acá.
+      const avisoPasado = mensajeFechaPasadaCarga(fecha, { modoReasignar: true }) || mensajeHoraPasadaReasignarCarga(fecha, horarioManual);
+      if (avisoPasado) { mostrarMensajeReasignarGrilla(avisoPasado, "error"); return; }
+
       // Etapa 5C, punto 2.1 (ampliación) — igual que al crearlo: nunca busca sillón,
       // nunca evalúa atadura/cupo/franja. guardarTurnoInternado ya sabe de
       // datosBasicos.modoReasignar (lo hereda de guardarTurnoConHueco, sin tocar nada

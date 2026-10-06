@@ -2633,3 +2633,29 @@ h1 {
 /* Etapa 5C (cierre): la sede elegida arriba se ignora cuando el turno es un internado (va siempre a Emilio Civit). */
 .atenuado { opacity: 0.45; }
 .nota-sede-internado { margin-top: 6px; font-weight: 500; color: var(--color-danger); }
+
+/* Etapa 5C (cierre): aviso de archivos desactualizados (ver verificarVersionesTurnero). */
+.aviso-versiones-turnero {
+  position: sticky;
+  top: 0;
+  z-index: 1000;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 16px;
+  background: #fff3cd;
+  border-bottom: 2px solid #e0a800;
+  color: #5c4400;
+  font-size: 14px;
+  line-height: 1.45;
+}
+
+.aviso-versiones-turnero button {
+  border: none;
+  background: transparent;
+  color: inherit;
+  font-size: 22px;
+  line-height: 1;
+  cursor: pointer;
+}

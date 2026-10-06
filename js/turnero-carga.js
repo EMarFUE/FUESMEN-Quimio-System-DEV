@@ -1,3 +1,4 @@
+(window.TURNERO_BUILD = window.TURNERO_BUILD || {}).carga = "5C-2026-10-01-c"; // marca de versión de este archivo (ver verificarVersionesTurnero)
 // Lógica de la pantalla "Carga de turno" del módulo de Turnero (Etapas T1-T3).
 // T1: formulario base. T2: calculadora de fecha. T3: motor de búsqueda de huecos.
 // Integración con turnero-motor.js para disponibilidad física pura.

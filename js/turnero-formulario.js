@@ -16,6 +16,42 @@
 // (campo-sillon-backup, campo-internado, campo-horario-manual), que quedan ocultos. La
 // lógica de búsqueda, validación y guardado no cambió.
 
+// ---------- Detector de archivos desactualizados ----------
+// Pasó varias veces que el navegador sirviera un archivo viejo junto a otros nuevos, y entonces
+// parte de las funciones nuevas "no andaban" aunque el código estuviera bien. Cada archivo lleva
+// una marca de versión (window.TURNERO_BUILD); las páginas llaman a verificarVersionesTurnero()
+// al cargar y, si alguno no coincide, muestran un aviso que nombra el archivo. Cada entrega nueva
+// cambia la marca en TODOS los archivos a la vez (y el ?v= de los scripts en las páginas).
+const BUILD_ESPERADO_TURNERO = "5C-2026-10-01-c";
+(window.TURNERO_BUILD = window.TURNERO_BUILD || {}).formulario = "5C-2026-10-01-c";
+
+function verificarVersionesTurnero(nombres) {
+  const marcas = window.TURNERO_BUILD || {};
+  const desactualizados = nombres.filter((n) => marcas[n] !== BUILD_ESPERADO_TURNERO);
+  if (desactualizados.length === 0) return true;
+
+  const archivos = desactualizados.map((n) => `turnero-${n}.js`).join(", ");
+  console.warn(`Archivos del sistema desactualizados (se esperaba la versión ${BUILD_ESPERADO_TURNERO}): ${archivos}`, marcas);
+  if (document.getElementById("aviso-versiones-turnero")) return false;
+
+  const aviso = document.createElement("div");
+  aviso.id = "aviso-versiones-turnero";
+  aviso.className = "aviso-versiones-turnero";
+  aviso.setAttribute("role", "alert");
+  const texto = document.createElement("span");
+  texto.textContent = `Hay archivos del sistema que no están actualizados en tu navegador: ${archivos}. ` +
+    "Probá con Ctrl+F5. Si el aviso sigue, el archivo del sitio es una versión anterior: hay que volver a subirlo.";
+  const cerrar = document.createElement("button");
+  cerrar.type = "button";
+  cerrar.textContent = "×";
+  cerrar.setAttribute("aria-label", "Cerrar aviso");
+  cerrar.addEventListener("click", () => aviso.remove());
+  aviso.appendChild(texto);
+  aviso.appendChild(cerrar);
+  document.body.insertBefore(aviso, document.body.firstChild);
+  return false;
+}
+
 // Estado puramente visual: qué opción de "Horario" está elegida. "exacto" sin hora cargada
 // se valida al guardar (horarioExactoSinHoraCarga, usada por intentarGuardarTurno).
 let modoHorarioCarga = "automatico";
