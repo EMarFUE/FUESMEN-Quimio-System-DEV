@@ -2,6 +2,16 @@ const fs = require("fs");
 const path = require("path");
 const { JSDOM } = require("jsdom");
 
+// Fechas relativas a hoy (antes eran fijas -2026-10-05 etc.- y la prueba vencia al pasar esa fecha):
+// LUNES = primer lunes que quede al menos 7 dias adelante; MARTES = el dia siguiente; el lunes siguiente = +7.
+function fechaISOMas(base, dias) {
+  const d = new Date(base.getTime()); d.setDate(d.getDate() + dias);
+  return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0");
+}
+const LUNES_PRUEBA = (() => { const d = new Date(); d.setHours(12, 0, 0, 0); d.setDate(d.getDate() + 7); while (d.getDay() !== 1) d.setDate(d.getDate() + 1); return d; })();
+if (LUNES_PRUEBA.getDay() !== 1) throw new Error("FALLA de la prueba: LUNES_PRUEBA no es lunes");
+const FECHA_LUNES = fechaISOMas(LUNES_PRUEBA, 0), FECHA_MARTES = fechaISOMas(LUNES_PRUEBA, 1), FECHA_LUNES_SIGUIENTE = fechaISOMas(LUNES_PRUEBA, 7);
+
 function assert(cond, msg) {
   if (!cond) { throw new Error("FALLA: " + msg); }
   console.log("OK: " + msg);
@@ -16,7 +26,7 @@ const srcGrilla = fs.readFileSync(path.join(__dirname, "../repo/js/turnero-grill
 // seguir siendo Emilio Civit en todos los caminos (decisión de Elías: para cambiar de
 // sede está Modificar).
 const DIAS = ["lunes", "martes", "miercoles", "jueves", "viernes"];
-const F = "2026-10-05"; // lunes
+const F = FECHA_LUNES; // lunes
 function sedes({ civitSoloLunes } = {}) {
   return [
     { id: "entre-rios", nombre: "Entre Ríos", horaApertura: "09:00", horaCierre: "12:00", diasAtencion: DIAS,
@@ -74,8 +84,8 @@ async function correr({ turnoPropio, otros, sedesCfg, accion, hora, clickCargarI
   // 2. Buscar disponibilidad sin lugar en Civit en 10 días → sobreturno → sigue en Civit.
   {
     const lleno = [];
-    for (const f of [F, "2026-10-12"]) for (const s of [1, 2]) lleno.push({ ...base, id: `l${f}${s}`, fecha: f, sillon: s, horarioInicio: "09:00", horarioFin: "10:00", paciente: { id: "q" + f + s } });
-    const r = await correr({ sedesCfg: sedes({ civitSoloLunes: true }), accion: "buscarReasignarGrilla", turnoPropio: { fecha: "2026-10-06", sillon: null }, otros: lleno, clickCargarIgual: true });
+    for (const f of [F, FECHA_LUNES_SIGUIENTE]) for (const s of [1, 2]) lleno.push({ ...base, id: `l${f}${s}`, fecha: f, sillon: s, horarioInicio: "09:00", horarioFin: "10:00", paciente: { id: "q" + f + s } });
+    const r = await correr({ sedesCfg: sedes({ civitSoloLunes: true }), accion: "buscarReasignarGrilla", turnoPropio: { fecha: FECHA_MARTES, sillon: null }, otros: lleno, clickCargarIgual: true });
     assert(r.campos && r.campos.sedeId === "emilio-civit" && r.campos.sillon === null, "[buscar, sin lugar] el sobreturno se carga en Civit (antes: la regla de Occhipinti lo mandaba a Entre Ríos)");
   }
   // 3. Horario exacto con lugar → Civit.
@@ -87,7 +97,7 @@ async function correr({ turnoPropio, otros, sedesCfg, accion, hora, clickCargarI
   {
     const r = await correr({ sedesCfg: sedes(), accion: "buscarReasignarHorarioManualGrilla", hora: "09:00",
       otros: [1, 2].map(s => ({ ...base, id: "o" + s, sillon: s, horarioInicio: "09:00", horarioFin: "10:00", paciente: { id: "q" + s } })),
-      turnoPropio: { horarioInicio: "11:00", horarioFin: "12:00", sillon: null, fecha: "2026-10-06" }, clickCargarIgual: true });
+      turnoPropio: { horarioInicio: "11:00", horarioFin: "12:00", sillon: null, fecha: FECHA_MARTES }, clickCargarIgual: true });
     assert(r.campos && r.campos.sedeId === "emilio-civit" && r.campos.sillon === null, "[horario exacto, sin sillón] el sobreturno se carga en Civit");
   }
   // 5. Internado (solo se reasigna con horario exacto) → Civit.

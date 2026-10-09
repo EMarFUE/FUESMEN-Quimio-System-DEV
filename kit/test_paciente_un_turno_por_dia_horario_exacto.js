@@ -3,6 +3,16 @@ const path = require("path");
 const vm = require("vm");
 const { JSDOM } = require("jsdom");
 
+// Fechas relativas a hoy (antes eran fijas -2026-10-05 etc.- y la prueba vencia al pasar esa fecha):
+// LUNES = primer lunes que quede al menos 7 dias adelante; MARTES = el dia siguiente; el lunes siguiente = +7.
+function fechaISOMas(base, dias) {
+  const d = new Date(base.getTime()); d.setDate(d.getDate() + dias);
+  return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0");
+}
+const LUNES_PRUEBA = (() => { const d = new Date(); d.setHours(12, 0, 0, 0); d.setDate(d.getDate() + 7); while (d.getDay() !== 1) d.setDate(d.getDate() + 1); return d; })();
+if (LUNES_PRUEBA.getDay() !== 1) throw new Error("FALLA de la prueba: LUNES_PRUEBA no es lunes");
+const FECHA_LUNES = fechaISOMas(LUNES_PRUEBA, 0), FECHA_MARTES = fechaISOMas(LUNES_PRUEBA, 1), FECHA_LUNES_SIGUIENTE = fechaISOMas(LUNES_PRUEBA, 7);
+
 function assert(cond, msg) {
   if (!cond) { throw new Error("FALLA: " + msg); }
   console.log("OK: " + msg);
@@ -19,7 +29,7 @@ const SEDES = [
     sillones: [{ numero: 1, tipo: "regular" }] }
 ];
 const MEDICO = { id: "med1", nombre: "Dr. Gómez", diasPorSede: {} };
-const FECHA = "2026-10-05";
+const FECHA = FECHA_LUNES;
 
 function t(id, pacId, sedeId, sillon, ini, fin, extra) {
   return { id, sedeId, fecha: FECHA, sillon, horarioInicio: ini, horarioFin: fin, paciente: { id: pacId, nombre: "N", apellido: "A", obraSocial: "OSDE" },
@@ -51,7 +61,7 @@ function horarioFijo(ctx, turnos, pacienteId, turnoIdExcluir, hora, fecha) {
   }
   {
     const ctx = cargarMotor();
-    const r = await horarioFijo(ctx, [t("otro", "pac1", "sede1", 1, "09:00", "10:00")], "pac1", undefined, "11:00", "2026-10-06");
+    const r = await horarioFijo(ctx, [t("otro", "pac1", "sede1", 1, "09:00", "10:00")], "pac1", undefined, "11:00", FECHA_MARTES);
     assert(r.exito === true, "[motor] el paciente tiene turno otro día, no el pedido → no bloquea");
   }
   {
@@ -203,7 +213,7 @@ function horarioFijo(ctx, turnos, pacienteId, turnoIdExcluir, hora, fecha) {
       document.getElementById("campo-medico").value = "med1";
       document.getElementById("campo-ciclo").value = "1";
       document.getElementById("campo-sesion").value = "1";
-      document.getElementById("campo-fecha").value = "2026-10-05";
+      document.getElementById("campo-fecha").value = "${FECHA_LUNES}";
       document.getElementById("campo-horario-manual").value = "11:00";
       intentarGuardarTurno();
     `;

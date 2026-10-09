@@ -2,6 +2,16 @@ const fs = require("fs");
 const path = require("path");
 const { JSDOM } = require("jsdom");
 
+// Fechas relativas a hoy (antes eran fijas -2026-10-05 etc.- y la prueba vencia al pasar esa fecha):
+// LUNES = primer lunes que quede al menos 7 dias adelante; MARTES = el dia siguiente; el lunes siguiente = +7.
+function fechaISOMas(base, dias) {
+  const d = new Date(base.getTime()); d.setDate(d.getDate() + dias);
+  return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0");
+}
+const LUNES_PRUEBA = (() => { const d = new Date(); d.setHours(12, 0, 0, 0); d.setDate(d.getDate() + 7); while (d.getDay() !== 1) d.setDate(d.getDate() + 1); return d; })();
+if (LUNES_PRUEBA.getDay() !== 1) throw new Error("FALLA de la prueba: LUNES_PRUEBA no es lunes");
+const FECHA_LUNES = fechaISOMas(LUNES_PRUEBA, 0), FECHA_MARTES = fechaISOMas(LUNES_PRUEBA, 1), FECHA_LUNES_SIGUIENTE = fechaISOMas(LUNES_PRUEBA, 7);
+
 function assert(cond, msg) {
   if (!cond) { throw new Error("FALLA: " + msg); }
   console.log("OK: " + msg);
@@ -26,7 +36,7 @@ const MEDICOS = [{ id: "med1", nombre: "Dr. Gómez", diasPorSede: {} }];
 const TURNO = {
   id: "t1", sedeId: "sede1", sedeNombre: "Emilio Civit", sedeAutomatica: true,
   medicoId: "med1", medicoNombre: "Dr. Gómez", esMedicoOtro: false, sillon: 1,
-  horarioInicio: "09:00", horarioFin: "10:00", fecha: "2026-10-05",
+  horarioInicio: "09:00", horarioFin: "10:00", fecha: FECHA_LUNES,
   protocolos: [{ protocoloId: "p1", nombre: "FEC", duracionMinutos: 60 }],
   premedicacion: false, ciclo: 1, sesion: 1, tipoSobreturno: null,
   paciente: { id: "pac1", nombre: "Ana", apellido: "Pérez", obraSocial: "OSDE" }
@@ -252,12 +262,12 @@ async function correrVisibilidadReasignar(rol) {
     assert(r.mensaje.includes("fecha"), "[reasignar horario manual, sin fecha] mensaje de error pide la fecha");
   }
   {
-    const r = correrBuscarHorarioManual({ fecha: "2026-10-05", horario: "" });
+    const r = correrBuscarHorarioManual({ fecha: FECHA_LUNES, horario: "" });
     assert(!r.spy, "[reasignar horario manual, sin horario] no llama a buscarYGuardarConHorarioManual");
     assert(r.mensaje.includes("horario"), "[reasignar horario manual, sin horario] mensaje de error pide el horario");
   }
   {
-    const r = correrBuscarHorarioManual({ fecha: "2026-10-05", horario: "14:30" });
+    const r = correrBuscarHorarioManual({ fecha: FECHA_LUNES, horario: "14:30" });
     assert(!!r.spy, "[reasignar horario manual, completo] llama a buscarYGuardarConHorarioManual");
     assert(r.spy.horarioManualString === "14:30", "[reasignar horario manual] horario pasado correctamente");
     assert(r.spy.datosBasicos.modoReasignar === true, "[reasignar horario manual] datosBasicos.modoReasignar = true");
@@ -268,7 +278,7 @@ async function correrVisibilidadReasignar(rol) {
     assert(r.spy.opciones.mostrarMensaje === r.spy.opciones.mostrarMensaje, "[reasignar horario manual] mostrarMensaje presente"); // sanity
   }
   {
-    const r = correrBuscarHorarioManual({ fecha: "2026-10-05", horario: "14:30", sillonTurno: 3 }); // sillón 3 = backup en sede1
+    const r = correrBuscarHorarioManual({ fecha: FECHA_LUNES, horario: "14:30", sillonTurno: 3 }); // sillón 3 = backup en sede1
     assert(r.spy.soloBackup === true, "[reasignar horario manual, sillón backup] soloBackup se detecta automáticamente en true");
   }
 
@@ -288,7 +298,7 @@ async function correrVisibilidadReasignar(rol) {
       buscarSillonHorarioFijo = async function() { return { exito: false, motivo: "horarioFueraDeSede" }; };
       window.__listo = false;
       buscarYGuardarConHorarioManual({
-        medicoId: "med1", medicoNombre: "Dr. Gómez", fecha: "2026-10-05",
+        medicoId: "med1", medicoNombre: "Dr. Gómez", fecha: "${FECHA_LUNES}",
         duracionTotalMinutos: 60, sedeAutomatica: true, sedeId: "sede1"
       }, "07:00", false).then(() => { window.__listo = true; }); // sin 4to argumento — mismo llamado que "+ nuevo turno"
     `;
@@ -323,7 +333,7 @@ async function correrVisibilidadReasignar(rol) {
         return { exito: false, motivo: "sinSillon" };
       };
       window.mostrarSobreturnoHorarioFijo = function() {}; // no nos importa este modal acá
-      document.getElementById("campo-fecha-reasignar-grilla").value = "2026-10-05";
+      document.getElementById("campo-fecha-reasignar-grilla").value = "${FECHA_LUNES}";
       document.getElementById("campo-horario-manual-reasignar-grilla").value = "11:30";
       window.__listo = false;
       (async () => {

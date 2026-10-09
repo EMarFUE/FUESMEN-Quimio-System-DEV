@@ -15,8 +15,8 @@ const leer = (p) => fs.readFileSync(path.join(REPO, p), "utf8");
 function repoConCargaVieja() {
   const dir = fs.mkdtempSync("/tmp/mezcla-");
   for (const sub of ["js", "turnero", "css"]) fs.mkdirSync(path.join(dir, sub), { recursive: true });
-  for (const f of fs.readdirSync(path.join(REPO, "js"))) fs.copyFileSync(path.join(REPO, "js", f), path.join(dir, "js", f));
-  for (const f of fs.readdirSync(path.join(REPO, "turnero"))) fs.copyFileSync(path.join(REPO, "turnero", f), path.join(dir, "turnero", f));
+  for (const f of fs.readdirSync(path.join(REPO, "js"))) { if (fs.statSync(path.join(REPO, "js", f)).isDirectory()) continue; fs.copyFileSync(path.join(REPO, "js", f), path.join(dir, "js", f)); }
+  for (const f of fs.readdirSync(path.join(REPO, "turnero"))) { if (fs.statSync(path.join(REPO, "turnero", f)).isDirectory()) continue; fs.copyFileSync(path.join(REPO, "turnero", f), path.join(dir, "turnero", f)); }
   fs.copyFileSync(path.join(REPO, "css/styles.css"), path.join(dir, "css/styles.css"));
   const sinMarca = fs.readFileSync(path.join(dir, "js/turnero-carga.js"), "utf8").replace(/^.*TURNERO_BUILD.*\n/m, "");
   fs.writeFileSync(path.join(dir, "js/turnero-carga.js"), sinMarca);
