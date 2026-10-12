@@ -1,4 +1,4 @@
-(window.TURNERO_BUILD = window.TURNERO_BUILD || {}).grilla = "5C-2026-10-01-c"; // marca de versión de este archivo (ver verificarVersionesTurnero)
+(window.TURNERO_BUILD = window.TURNERO_BUILD || {}).grilla = "B1-2026-10-11-a"; // marca de versión de este archivo (ver verificarVersionesTurnero)
 // Vista de agenda semanal — Etapa T6 del Módulo de Turnero.
 // Fase 1 (de 3): grilla de solo lectura. Elegir sede, navegar la semana, ver los
 // turnos ya cargados como tarjetas dentro de su día y horario, con el sillón
@@ -2051,7 +2051,13 @@ async function guardarModificacionGrilla() {
     // lee turnero-carga.js. Si alguna de esas lecturas falló, validaría contra listas
     // vacías y aprobaría un sillón ocupado — no se valida a ciegas (ver
     // asegurarLecturasMotor). Un internado no valida sillón, así que no lo necesita.
-    if (!turno.internado && hayLecturasMotorFallidas() && !(await asegurarLecturasMotor(mostrarMensajeModificarGrilla))) return;
+    // B1: Modificar no cambia la fecha: alcanza con los turnos de ese día, leídos justo ahora
+    // (abrir el modal ya no lee turnos; ver asegurarTurnos en turnero-carga.js, que además hace
+    // el control de lecturas fallidas de la Etapa 5C).
+    if (!turno.internado) {
+      const ventanaModificar = ventanaTurnosDia(turno.fecha);
+      if (hayQueAsegurarTurnos(ventanaModificar) && !(await asegurarTurnos(ventanaModificar, mostrarMensajeModificarGrilla))) return;
+    }
 
     const validacion = turno.internado
       ? { valido: true }
@@ -2373,7 +2379,10 @@ async function buscarDisponibilidadGrilla() {
     // Etapa 5C (cierre): sin datos completos no se informa disponibilidad (ver
     // asegurarLecturasMotor en turnero-carga.js). turnosEnSede se arma recién después del
     // control: si hubo que releer, usa la lista fresca.
-    if (hayLecturasMotorFallidas() && !(await asegurarLecturasMotor(mostrarMensajeConsultaDisponibilidadGrilla))) return;
+    // B1: la búsqueda recorre la fecha pedida y los días siguientes: se leen justo ahora (ver asegurarTurnos,
+    // que además hace el control de lecturas fallidas de la Etapa 5C).
+    const ventanaConsulta = ventanaTurnosBusqueda(fechaElegida || fechaLocalHoy());
+    if (hayQueAsegurarTurnos(ventanaConsulta) && !(await asegurarTurnos(ventanaConsulta, mostrarMensajeConsultaDisponibilidadGrilla))) return;
     const turnosEnSede = turnosExistentes.filter(t => t.sedeId === sedeId);
     const resultado = await buscarHuecosEnSede(
       sedeId,

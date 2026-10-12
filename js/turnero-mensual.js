@@ -1,4 +1,4 @@
-(window.TURNERO_BUILD = window.TURNERO_BUILD || {}).mensual = "5C-2026-10-01-c"; // marca de versión de este archivo (ver verificarVersionesTurnero)
+(window.TURNERO_BUILD = window.TURNERO_BUILD || {}).mensual = "B1-2026-10-11-a"; // marca de versión de este archivo (ver verificarVersionesTurnero)
 // Etapa 5, fase 1 — vista mensual de la agenda (turnero/agenda-mensual.html).
 //
 // Pantalla de SOLO CONSULTA (decisión con Elías): no arrastra ni edita turnos. Cada día

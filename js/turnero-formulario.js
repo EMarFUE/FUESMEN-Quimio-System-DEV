@@ -22,8 +22,8 @@
 // una marca de versión (window.TURNERO_BUILD); las páginas llaman a verificarVersionesTurnero()
 // al cargar y, si alguno no coincide, muestran un aviso que nombra el archivo. Cada entrega nueva
 // cambia la marca en TODOS los archivos a la vez (y el ?v= de los scripts en las páginas).
-const BUILD_ESPERADO_TURNERO = "5C-2026-10-01-c";
-(window.TURNERO_BUILD = window.TURNERO_BUILD || {}).formulario = "5C-2026-10-01-c";
+const BUILD_ESPERADO_TURNERO = "B1-2026-10-11-a";
+(window.TURNERO_BUILD = window.TURNERO_BUILD || {}).formulario = "B1-2026-10-11-a";
 
 function verificarVersionesTurnero(nombres) {
   const marcas = window.TURNERO_BUILD || {};

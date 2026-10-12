@@ -1,4 +1,4 @@
-(window.TURNERO_BUILD = window.TURNERO_BUILD || {}).carga = "5C-2026-10-01-c"; // marca de versión de este archivo (ver verificarVersionesTurnero)
+(window.TURNERO_BUILD = window.TURNERO_BUILD || {}).carga = "B1-2026-10-11-a"; // marca de versión de este archivo (ver verificarVersionesTurnero)
 // Lógica de la pantalla "Carga de turno" del módulo de Turnero (Etapas T1-T3).
 // T1: formulario base. T2: calculadora de fecha. T3: motor de búsqueda de huecos.
 // Integración con turnero-motor.js para disponibilidad física pura.
@@ -502,12 +502,22 @@ async function cargarMedicosCarga() {
   medicosCacheCarga.sort((a, b) => (a.nombre || "").localeCompare(b.nombre || "", "es"));
 }
 
-async function cargarProtocolosCarga() {
+// B1 (lecturas): los protocolos son ~500 documentos que casi nunca cambian y se releían
+// completos en cada apertura de "+ Nuevo turno", Modificar y Consultar disponibilidad.
+// Ahora se guardan en memoria 20 minutos; "forzar" (true) siempre relee. Un protocolo creado
+// al vuelo en esta PC ya se suma a la lista (ver más abajo) y los que se creen en otra PC
+// aparecen al vencer el plazo. Si la lectura falla, no queda marcada como "ya leída".
+const VENCIMIENTO_PROTOCOLOS_MS = 20 * 60 * 1000;
+let protocolosLeidosEnCarga = 0;
+
+async function cargarProtocolosCarga(forzar) {
+  if (!forzar && protocolosLeidosEnCarga && Date.now() - protocolosLeidosEnCarga < VENCIMIENTO_PROTOCOLOS_MS) return;
   const snapshot = await db.collection("turneroProtocolos").get();
   protocolosCacheCarga = snapshot.docs
     .map((doc) => ({ id: doc.id, ...doc.data() }))
     .filter((p) => p.activo !== false)
     .sort((a, b) => (a.nombre || "").localeCompare(b.nombre || "", "es"));
+  protocolosLeidosEnCarga = Date.now();
 }
 
 async function cargarSedesCarga() {
@@ -528,7 +538,8 @@ async function cargarSedesCarga() {
 // (turnero-grilla.js).
 const lecturasMotorFallidas = new Set();
 const RECARGAS_LECTURAS_MOTOR = {
-  turnos: () => cargarTurnosExistentes(),
+  // B1: se reintenta la última ventana pedida (abrir el modal ya no lee turnos, ver asegurarTurnos).
+  turnos: () => (ultimaVentanaTurnos ? leerVentanaTurnos(ultimaVentanaTurnos.desde, ultimaVentanaTurnos.hasta) : Promise.resolve()),
   bloqueos: () => cargarBloqueosCarga(),
   cupos: () => cargarCuposCarga()
 };
@@ -590,25 +601,95 @@ async function cargarBloqueosCarga() {
 // fuera de esta ventana (nunca busca en el pasado, y el máximo que puede buscar hacia
 // adelante es TOPE_DIAS_ANTICIPACION + el margen de búsqueda del motor), así que
 // acotar acá no cambia ningún resultado, solo el costo de leerlo.
+//
+// B1 (lecturas): ni siquiera esa ventana de ~200 días hace falta al abrir. Los documentos se
+// cobran por turno leído, no por rango de fechas, y el motor solo evalúa la fecha pedida más
+// TOPE_DIAS_BUSQUEDA días (sillones, cupo, atadura y "un turno por día" se calculan por día).
+// Ahora abrir NO lee turnos: reinicia la lista y, justo antes de que el motor decida, cada
+// camino llama a asegurarTurnos() con su ventana (fecha pedida + TOPE_DIAS_BUSQUEDA + margen,
+// o solo ese día cuando la fecha no cambia). Lo ya leído no se vuelve a leer; lo que se solapa
+// se reemplaza sin duplicar. Todo lo que quede FUERA de la ventana el motor NO lo ve: por eso
+// ningún camino puede llegar al motor sin pasar por acá (ver test_ventana_turnos.js).
+//
+// coberturaTurnos === null significa "la lista la maneja quien llama" (pruebas, código viejo):
+// en ese caso no se interviene, igual que antes. Mientras no esté pendiente ninguna lectura,
+// los llamadores siguen de largo SIN esperar (mismo orden de ejecución que antes).
+const MARGEN_VENTANA_TURNOS_DIAS = 2;
+let coberturaTurnos = null;   // [{ desde, hasta }] ventanas ya leídas desde que se abrió el modal
+let ultimaVentanaTurnos = null; // la última pedida: es la que se reintenta si la lectura falla
+
 async function cargarTurnosExistentes() {
+  turnosExistentes = [];
+  coberturaTurnos = [];
+  ultimaVentanaTurnos = null;
+  lecturasMotorFallidas.delete("turnos");
+}
+
+function sumarDiasISOCarga(fechaISOTexto, dias) {
+  const d = new Date(fechaISOTexto + "T12:00:00");
+  d.setDate(d.getDate() + dias);
+  return fechaISODesdeObjeto(d);
+}
+
+// Búsqueda que puede correrse hasta TOPE_DIAS_BUSQUEDA días (nuevo turno, Reasignar, otro día, Consultar).
+function ventanaTurnosBusqueda(fechaISOTexto) {
+  return { desde: fechaISOTexto, hasta: sumarDiasISOCarga(fechaISOTexto, TOPE_DIAS_BUSQUEDA + MARGEN_VENTANA_TURNOS_DIAS) };
+}
+
+// Validación de un día puntual (horario exacto, Modificar, sobreturnos): la fecha no se corre.
+function ventanaTurnosDia(fechaISOTexto) {
+  return { desde: fechaISOTexto, hasta: fechaISOTexto };
+}
+
+function turnosPendientes(ventana) {
+  if (coberturaTurnos === null) return false;
+  return !coberturaTurnos.some((c) => c.desde <= ventana.desde && c.hasta >= ventana.hasta);
+}
+
+async function leerVentanaTurnos(desde, hasta) {
+  ultimaVentanaTurnos = { desde, hasta };
+  const cobertura = coberturaTurnos;
   try {
-    const desde = fechaISODesdeObjeto(fechaObjetoDesdeDiasHoy(-1));
-    const hasta = fechaISODesdeObjeto(fechaObjetoDesdeDiasHoy(MARGEN_LECTURA_TURNOS_DIAS));
     const snapshot = await db.collection("turnos")
       .where("estado", "==", "activo")
       .where("fecha", ">=", desde)
       .where("fecha", "<=", hasta)
       .get();
-    turnosExistentes = snapshot.docs.map((doc) => ({
-      id: doc.id,
-      ...doc.data()
-    }));
+    // Si mientras se leía se reabrió el modal (se reinició la lista), este resultado ya no corresponde.
+    if (cobertura !== coberturaTurnos) { lecturasMotorFallidas.add("turnos"); return false; }
+    const leidos = snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
+    turnosExistentes = turnosExistentes.filter((t) => !(t.fecha >= desde && t.fecha <= hasta)).concat(leidos);
+    cobertura.push({ desde, hasta });
     lecturasMotorFallidas.delete("turnos");
+    return true;
   } catch (error) {
     console.warn("No se pudieron cargar los turnos existentes para el motor:", error);
-    turnosExistentes = [];
     lecturasMotorFallidas.add("turnos"); // Etapa 5C (cierre): ver asegurarLecturasMotor
+    return false;
   }
+}
+
+// true = el motor puede decidir con datos completos. Primero lee la ventana si falta; después, si
+// CUALQUIER lectura del motor (turnos, bloqueos, cupos) quedó marcada como fallida, reintenta todo
+// junto y, si sigue fallando, avisa cuáles faltan y devuelve false (mismo cartel y mismo criterio que
+// asegurarLecturasMotor). Reemplaza al "if (hayLecturasMotorFallidas() && ...)" de cada camino.
+async function asegurarTurnos(ventana, mostrarMensaje) {
+  if (turnosPendientes(ventana)) await leerVentanaTurnos(ventana.desde, ventana.hasta);
+  if (!hayLecturasMotorFallidas()) return true;
+  return asegurarLecturasMotor(mostrarMensaje);
+}
+
+// Camino normal sin nada pendiente ni fallido: sigue de largo SIN esperar (mismo orden de ejecución que antes).
+function hayQueAsegurarTurnos(ventana) {
+  return turnosPendientes(ventana) || hayLecturasMotorFallidas();
+}
+
+// Para los guardados de sobreturno, que siguen a una búsqueda: el día ya debería estar leído, pero no se supone.
+async function asegurarTurnosDelDiaOAvisar(fechaISOTexto) {
+  if (await asegurarTurnos(ventanaTurnosDia(fechaISOTexto), mostrarMensajeGeneral)) return true;
+  const boton = document.getElementById("boton-guardar-turno");
+  if (boton) boton.disabled = false;
+  return false;
 }
 
 // --- Búsqueda y alta rápida de paciente ---
@@ -1566,7 +1647,9 @@ async function buscarYMostrarHuecos(datosBasicos, pacienteInfo) {
       mostrarMensajeGeneral(texto, tipo);
       if (datosBasicos.modoReasignar) mostrarMensajeReasignarGrilla(texto, tipo);
     };
-    if (hayLecturasMotorFallidas() && !(await asegurarLecturasMotor(avisarLecturas))) return;
+    // B1: el motor mira la fecha pedida y los días siguientes: se leen justo ahora (ver asegurarTurnos).
+    const ventanaBusqueda = ventanaTurnosBusqueda(datosBasicos.fecha);
+    if (hayQueAsegurarTurnos(ventanaBusqueda) && !(await asegurarTurnos(ventanaBusqueda, avisarLecturas))) return;
 
     // Etapa 5C (cierre): la búsqueda automática desde una fecha pasada ofrecería días pasados.
     // Nunca, tampoco en Reasignar (que sigue sin permitir el pasado).
@@ -1981,7 +2064,9 @@ async function buscarFechaPosteriorConReacomodo(datosBasicos) {
   mostrarMensajeGeneral("Buscando en fechas posteriores…", "info");
 
   try {
-    if (hayLecturasMotorFallidas() && !(await asegurarLecturasMotor(mostrarMensajeGeneral))) return; // Etapa 5C (cierre)
+    // B1: ventana de la fecha pedida; además hace el control de lecturas fallidas de la Etapa 5C (ver asegurarTurnos).
+    const ventanaPosterior = ventanaTurnosBusqueda(datosBasicos.fecha);
+    if (hayQueAsegurarTurnos(ventanaPosterior) && !(await asegurarTurnos(ventanaPosterior, mostrarMensajeGeneral))) return;
     const idsNoReacomodables = calcularTurnosNoReacomodablesIds();
     const resultado = await buscarHuecosConReacomodo(
       datosBasicos.medicoId || datosBasicos.medicoNombre,
@@ -2258,6 +2343,8 @@ async function guardarConSobreturnoPorAtadura(huecoDisponible, datosBasicos) {
   let horaInicioSobreturno = huecoDisponible.horaInicio;
   let horaFinSobreturno = huecoDisponible.horaFin;
   if (huecoDisponible.sinHuecoFisico) {
+    // B1: el horario se calcula con los turnos de ese día: que estén leídos (ver asegurarTurnos).
+    if (turnosPendientes(ventanaTurnosDia(huecoDisponible.fecha)) && !(await asegurarTurnosDelDiaOAvisar(huecoDisponible.fecha))) return;
     const sedeDocAtadura = sedesCacheCarga.find((s) => s.id === huecoDisponible.sedeId);
     const turnosDelDiaAtadura = turnosExistentes.filter((t) =>
       t.sedeId === huecoDisponible.sedeId && t.fecha === huecoDisponible.fecha &&
@@ -2387,6 +2474,8 @@ async function guardarConSobreturnoPorFranja(huecoDisponible, datosBasicos) {
 // sin encontrar sillón físico. Única vía de sobreturno por esta causa — sin variantes.
 async function guardarComoSobreturnoFisico(datosBasicos) {
   cerrarModalSobreturno();
+  // B1: el horario se calcula con los turnos de ese día: que estén leídos (ver asegurarTurnos).
+  if (turnosPendientes(ventanaTurnosDia(datosBasicos.fecha)) && !(await asegurarTurnosDelDiaOAvisar(datosBasicos.fecha))) return;
 
   let sedeIdSobreturno = datosBasicos.sedeId;
   let sedeNombreSobreturno = datosBasicos.sedeNombre;
@@ -2501,6 +2590,8 @@ function bloqueoResponsableDeSobreturnoAgotado(pseudoTurnosBloqueo, bloque) {
 // así que ocuparla de más no rompe el reparto de sillones regulares del resto de médicos.
 async function guardarComoSobreturnoSoloBackup(datosBasicos) {
   cerrarModalSobreturno();
+  // B1: el horario se calcula con los turnos de ese día: que estén leídos (ver asegurarTurnos).
+  if (turnosPendientes(ventanaTurnosDia(datosBasicos.fecha)) && !(await asegurarTurnosDelDiaOAvisar(datosBasicos.fecha))) return;
 
   let sedeIdSobreturno = datosBasicos.sedeId;
   let sedeNombreSobreturno = datosBasicos.sedeNombre;
@@ -2632,14 +2723,18 @@ async function buscarYGuardarConHorarioManual(datosBasicos, horarioManualString,
   mostrarMensaje("Verificando el horario indicado…", "info");
 
   try {
-    if (hayLecturasMotorFallidas() && !(await asegurarLecturasMotor(mostrarMensaje))) return; // Etapa 5C (cierre)
+    // B1: la fecha no se corre, alcanza con los turnos de ese día (ver asegurarTurnos); además hace el
+    // control de lecturas fallidas de la Etapa 5C.
+    const ventanaDia = ventanaTurnosDia(datosBasicos.fecha);
+    if (hayQueAsegurarTurnos(ventanaDia) && !(await asegurarTurnos(ventanaDia, mostrarMensaje))) return;
 
     // Etapa 5C (cierre): turnos retroactivos. Reasignar sigue sin permitir fechas pasadas. En un
-    // alta nueva, una fecha pasada se verifica contra los turnos REALES de ese día (se leen acá).
+    // alta nueva, una fecha pasada se verifica contra los turnos REALES de ese día (ya leídos arriba;
+    // sin lectura por demanda activa, se leen acá como siempre).
     if (datosBasicos.fecha < fechaLocalHoy()) {
       const avisoFechaPasada = mensajeFechaPasadaCarga(datosBasicos.fecha, { modoReasignar: !!datosBasicos.modoReasignar, horarioManual: horarioManualString, esInternado: false });
       if (avisoFechaPasada) { mostrarMensaje(avisoFechaPasada, "error"); return; }
-      if (!(await cargarTurnosDeFechaCarga(datosBasicos.fecha, mostrarMensaje))) return;
+      if (coberturaTurnos === null && !(await cargarTurnosDeFechaCarga(datosBasicos.fecha, mostrarMensaje))) return;
     }
 
     const resultado = await buscarSillonHorarioFijo(
