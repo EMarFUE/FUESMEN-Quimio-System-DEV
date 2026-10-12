@@ -7,7 +7,7 @@ const { JSDOM, VirtualConsole } = require("jsdom");
 function assert(cond, msg) { if (!cond) { throw new Error("FALLA: " + msg); } console.log("OK: " + msg); }
 const REPO = process.env.REPO_DIR || path.join(__dirname, "../repo");
 const leer = (p) => fs.readFileSync(path.join(REPO, p), "utf8");
-const SCRIPTS = ["js/turnero-motor.js", "js/turnero-formulario.js", "js/turnero-carga.js"].map(leer);
+const SCRIPTS = ["js/turnero-motor.js", "js/turnero-formulario.js", "js/pacientes-cache.js", "js/pacientes-buscador.js", "js/turnero-carga.js"].map(leer);
 
 const SEDES = [{ id: "entre-rios", nombre: "Entre Ríos", horaApertura: "09:00", horaCierre: "13:00", diasAtencion: ["lunes", "martes", "miercoles", "jueves", "viernes"],
   usaAtaduraDia: false, usaCuposPorcentaje: false, sillones: [{ numero: 1, tipo: "regular" }, { numero: 2, tipo: "regular" }] }];
@@ -28,7 +28,7 @@ async function abrir(rol, repoDir) {
     function consulta(nombre, filtros) { return { where: function(f, op, v) { return consulta(nombre, filtros.concat([[f, op, v]])); }, orderBy: function() { return this; },
       get: async function() { var docs = (STORE[nombre] || []).filter(function(d) { return filtros.every(function(x) { return cmp(d[x[0]], x[1], x[2]); }); })
         .map(function(d) { return { id: d.id, data: function() { var c = Object.assign({}, d); delete c.id; return c; } }; }); return { docs: docs, empty: docs.length === 0, size: docs.length }; } }; }
-    function docRef(nombre, id) { var ref = { __path: nombre + "/" + id, id: id, get: async function() { return { exists: false, id: id, data: function() { return {}; } }; },
+    function docRef(nombre, id) { var ref = { __path: nombre + "/" + id, id: id, get: async function() { var d = (STORE[nombre] || []).find(function(x) { return x.id === id; }); return { exists: !!d, id: id, data: function() { var c = Object.assign({}, d); delete c.id; return c; } }; },
       update: async function(x) { window.__ops.push({ op: "update", path: ref.__path, data: x }); }, set: async function(x) { window.__ops.push({ op: "set", path: ref.__path, data: x }); } }; return ref; }
     window.db = { collection: function(nombre) { var q = consulta(nombre, []); q.doc = function(id) { return docRef(nombre, id || "auto"); }; return q; },
       batch: function() { return { set: function(r, d) { window.__ops.push({ op: "set", path: r.__path, data: d }); }, update: function(r, d) { window.__ops.push({ op: "update", path: r.__path, data: d }); },
@@ -37,7 +37,7 @@ async function abrir(rol, repoDir) {
     window.requireAuth = function() {};
   `;
   const leerDe = (rel) => (repoDir ? fs.readFileSync(path.join(repoDir, rel), "utf8") : leer(rel));
-  const scriptsDe = repoDir ? ["js/turnero-motor.js", "js/turnero-formulario.js", "js/turnero-carga.js"].map(leerDe) : SCRIPTS;
+  const scriptsDe = repoDir ? ["js/turnero-motor.js", "js/turnero-formulario.js", "js/pacientes-cache.js", "js/pacientes-buscador.js", "js/turnero-carga.js"].map(leerDe) : SCRIPTS;
   let html = leerDe("turnero/carga.html").replace(/<script src="[^"]*"><\/script>/g, "");
   html = html.replace(/<script>\s*montarFormularioCarga[\s\S]*?<\/script>/, "");
   html = html.replace("</body>", `<script>${stubs}</script>` + scriptsDe.map((s) => `<script>${s}</script>`).join("") +

@@ -120,7 +120,8 @@ async function principal() {
   }
   {
     const a = await retro({ horario: "exacto", hora: "11:00", antesDeGuardar: (a) => { a.w.__fallaFecha = JUEVES_PASADO; } });
-    assert(!a.doc && /No se pudieron leer los turnos de esa fecha/.test(a.msg), "[retroactivo] si falla la lectura de los turnos de ese día, no carga a ciegas: avisa y no guarda nada");
+    // B1: el aviso es ahora el mismo de todos los flujos ("…(turnos ya cargados)…"); lo que importa no cambió: no guarda y avisa.
+    assert(!a.doc && /No se pudieron leer (los turnos de esa fecha|los datos que el sistema necesita.*turnos ya cargados)/.test(a.msg), "[retroactivo] si falla la lectura de los turnos de ese día, no carga a ciegas: avisa y no guarda nada");
   }
   {
     const a = await retro({});

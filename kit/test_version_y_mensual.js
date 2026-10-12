@@ -34,8 +34,20 @@ async function principal() {
   assert(!!esperada && Object.values(marcas).every((v) => v === esperada), `[versión] los cuatro archivos llevan la MISMA marca de versión (${esperada}): ` + JSON.stringify(marcas));
   for (const html of ["turnero/agenda.html", "turnero/carga.html"]) {
     const src = leer(html);
-    const todos = [...src.matchAll(/<script src="\.\.\/js\/(turnero-[a-z]+\.js)(\?v=[^"]*)?"/g)];
-    assert(todos.length >= 3 && todos.every((m) => m[2] === `?v=${esperada}`) && /styles\.css\?v=/.test(src), `[versión] ${html}: TODOS los scripts de turnero (${todos.length}) y la hoja de estilos llevan ?v=${esperada} (el navegador no puede servir una copia vieja)`);
+    const todos = [...src.matchAll(/<script src="\.\.\/js\/((?:turnero|pacientes)-[a-z]+\.js)(\?v=[^"]*)?"/g)];
+    assert(todos.length >= 5 && todos.some((m) => m[1] === "pacientes-cache.js") && todos.some((m) => m[1] === "pacientes-buscador.js") && todos.every((m) => m[2] === `?v=${esperada}`) && /styles\.css\?v=/.test(src), `[versión] ${html}: TODOS los scripts de turnero (${todos.length}) y la hoja de estilos llevan ?v=${esperada} (el navegador no puede servir una copia vieja)`);
+  }
+
+  for (const [clave, archivo] of [["pacientes-cache", "js/pacientes-cache.js"], ["pacientes-buscador", "js/pacientes-buscador.js"]]) {
+    const m = leer(archivo).match(/TURNERO_BUILD = window\.TURNERO_BUILD \|\| \{\}\)\["([^"]+)"\] = "([^"]+)"/);
+    assert(!!m && m[1] === clave && m[2] === esperada, `[versión] ${archivo} lleva la misma marca de versión (${esperada})`);
+  }
+  function repoConBuscadorViejo() {
+    const dir = repoConCargaVieja();
+    fs.copyFileSync(path.join(REPO, "js/turnero-carga.js"), path.join(dir, "js/turnero-carga.js")); // este sí es el nuevo
+    const sinMarca = fs.readFileSync(path.join(dir, "js/pacientes-buscador.js"), "utf8").replace(/^.*TURNERO_BUILD.*\n/m, "");
+    fs.writeFileSync(path.join(dir, "js/pacientes-buscador.js"), sinMarca);
+    return dir;
   }
 
   // ===================== 2. El aviso =====================
@@ -50,6 +62,13 @@ async function principal() {
     const aviso = a.d.getElementById("aviso-versiones-turnero");
     assert(!!aviso && /turnero-carga\.js/.test(aviso.textContent) && /Ctrl\+F5/.test(aviso.textContent) && !/turnero-grilla\.js|turnero-formulario\.js/.test(aviso.textContent),
       "[versión] con un turnero-carga.js viejo mezclado con archivos nuevos, la agenda avisa CUÁL es y qué hacer (Ctrl+F5)");
+  }
+  {
+    const dir = repoConBuscadorViejo();
+    const a = await abrirAgenda("administrador", {}, { repoDir: dir });
+    const aviso = a.d.getElementById("aviso-versiones-turnero");
+    assert(!!aviso && /pacientes-buscador\.js/.test(aviso.textContent) && !/turnero-carga\.js|pacientes-cache\.js/.test(aviso.textContent),
+      "[versión] con un pacientes-buscador.js viejo (o que falta subir), la agenda avisa CUÁL es: " + (aviso ? aviso.textContent.slice(0, 120) : "(sin aviso)"));
   }
   {
     const p = await abrirCargaHtml("administrador");

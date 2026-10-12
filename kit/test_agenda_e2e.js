@@ -9,7 +9,7 @@ function assert(cond, msg) { if (!cond) { throw new Error("FALLA: " + msg); } co
 const REPO = process.env.REPO_DIR || path.join(__dirname, "../repo");
 const leer = (p) => fs.readFileSync(path.join(REPO, p), "utf8");
 const srcHtml = leer("turnero/agenda.html");
-const SCRIPTS = ["js/turnero-motor.js", "js/turnero-formulario.js", "js/turnero-carga.js", "js/turnero-grilla.js", "js/turnero-dia.js"].map(leer);
+const SCRIPTS = ["js/turnero-motor.js", "js/turnero-formulario.js", "js/pacientes-cache.js", "js/pacientes-buscador.js", "js/turnero-carga.js", "js/turnero-grilla.js", "js/turnero-dia.js"].map(leer);
 
 const SEDES = [
   { id: "emilio-civit", nombre: "Emilio Civit", horaApertura: "08:00", horaCierre: "14:00", diasAtencion: ["lunes", "martes", "miercoles", "jueves", "viernes"],
@@ -52,12 +52,15 @@ async function abrirAgenda(rol, datosExtra, override) {
     window.cerrarSesion = function() {};
     window.__ops = [];
     var STORE = window.__STORE;
+    function valor(d, ruta) { return String(ruta).split(".").reduce(function(o, k) { return o == null ? undefined : o[k]; }, d); }
     function cmp(a, op, b) { if (op === "==") return a === b; if (op === ">=") return a >= b; if (op === "<=") return a <= b; return true; }
     function consulta(nombre, filtros) {
       return {
         where: function(f, op, v) { return consulta(nombre, filtros.concat([[f, op, v]])); },
         orderBy: function() { return this; },
-        get: async function() { if (window.__fallaFecha && nombre === "turnos" && filtros.some(function(f) { return f[0] === "fecha" && f[1] === "==" && f[2] === window.__fallaFecha; })) throw new Error("lectura simulada fallida (turnos de la fecha)"); if (window.__fallaTurnosMotor && nombre === "turnos" && !filtros.some(function(f) { return f[0] === "sedeId"; })) throw new Error("lectura simulada fallida (turnos del motor)"); var docs = (STORE[nombre] || []).filter(function(d) { return filtros.every(function(x) { return cmp(d[x[0]], x[1], x[2]); }); })
+        limit: function(n) { return consulta(nombre, filtros.concat([["__limit", "limit", n]])); },
+        add: async function(x) { var id = "nuevo-" + nombre + "-" + (window.__ops.length + 1); window.__ops.push({ op: "add", path: nombre, data: x }); (STORE[nombre] = STORE[nombre] || []).push(Object.assign({ id: id }, x)); return { id: id }; },
+        get: async function() { if (window.__consultas) window.__consultas.push({ coleccion: nombre, filtros: filtros.map(function(f) { return f.slice(); }) }); if (window.__fallaProtocolos && nombre === "turneroProtocolos") throw new Error("lectura simulada fallida (protocolos)"); if (window.__fallaPaciente && nombre === "turnos" && filtros.some(function(f) { return f[0] === "paciente.id"; })) throw new Error("lectura simulada fallida (turnos del paciente)"); if (window.__demoraPaciente && nombre === "turnos") { var pid = (filtros.filter(function(f) { return f[0] === "paciente.id"; })[0] || [])[2]; if (pid && window.__demoraPaciente[pid]) await window.__demoraPaciente[pid]; } if (window.__fallaFecha && nombre === "turnos" && (filtros.some(function(f) { return f[0] === "fecha" && f[1] === "==" && f[2] === window.__fallaFecha; }) || (filtros.some(function(f) { return f[0] === "fecha" && f[1] === ">=" && f[2] <= window.__fallaFecha; }) && filtros.some(function(f) { return f[0] === "fecha" && f[1] === "<=" && f[2] >= window.__fallaFecha; })))) throw new Error("lectura simulada fallida (turnos de la fecha)"); if (window.__fallaTurnosMotor && nombre === "turnos" && !filtros.some(function(f) { return f[0] === "sedeId"; })) throw new Error("lectura simulada fallida (turnos del motor)"); var docs = (STORE[nombre] || []).filter(function(d) { return filtros.every(function(x) { return cmp(valor(d, x[0]), x[1], x[2]); }); })
           .map(function(d) { return { id: d.id, data: function() { var c = Object.assign({}, d); delete c.id; return c; } }; }); return { docs: docs, empty: docs.length === 0, size: docs.length }; }
       };
     }
@@ -82,7 +85,7 @@ async function abrirAgenda(rol, datosExtra, override) {
   // override.repoDir: abrir la agenda con los archivos de OTRA carpeta (p. ej. una mezcla con un archivo viejo)
   const rutaRepo = (override && override.repoDir) || null;
   const htmlFuente = rutaRepo ? fs.readFileSync(path.join(rutaRepo, "turnero/agenda.html"), "utf8") : srcHtml;
-  const scriptsFuente = rutaRepo ? ["js/turnero-motor.js", "js/turnero-formulario.js", "js/turnero-carga.js", "js/turnero-grilla.js", "js/turnero-dia.js"].map((f) => fs.readFileSync(path.join(rutaRepo, f), "utf8")) : SCRIPTS;
+  const scriptsFuente = rutaRepo ? ["js/turnero-motor.js", "js/turnero-formulario.js", "js/pacientes-cache.js", "js/pacientes-buscador.js", "js/turnero-carga.js", "js/turnero-grilla.js", "js/turnero-dia.js"].map((f) => fs.readFileSync(path.join(rutaRepo, f), "utf8")) : SCRIPTS;
   let html = htmlFuente.replace(/<script src="[^"]*"><\/script>/g, "");
   html = html.replace(/<script>\s*requireAuth[\s\S]*?<\/script>/, "");
   html = html.replace(/<script>\s*montarFormularioCarga[\s\S]*?<\/script>/, ""); // el montaje inline se rehace abajo, ya con los scripts cargados
@@ -90,7 +93,7 @@ async function abrirAgenda(rol, datosExtra, override) {
     `<script>window.__listo = false; (async () => { try { montarFormularioCarga("formulario-carga"); await iniciarAgenda({ uid: "u-yo", email: "yo@x.com" }, ${JSON.stringify({ rol, nombre: "Yo", medicoId: "med1", ...(datosExtra || {}) })}); } catch (e) { window.__errInit = String(e && e.stack || e); } window.__listo = true; })();</script></body>`);
   const dom = new JSDOM(html, { runScripts: "dangerously", pretendToBeVisual: true, virtualConsole: vc, url: (override && override.url) || "http://localhost/turnero/agenda.html",
     beforeParse(window) {
-      window.__STORE = { turneroSedes: (override && override.sedes) || SEDES, turneroMedicos: MEDICOS, turneroCupos: [], turneroBloqueos: [], pacientes: PACIENTES_FIX, turneroProtocolos: PROTOCOLOS_FIX, turnos: (override && override.turnos) || TURNOS };
+      window.__STORE = { turneroSedes: (override && override.sedes) || SEDES, turneroMedicos: MEDICOS, turneroCupos: [], turneroBloqueos: [], pacientes: PACIENTES_FIX, turneroProtocolos: (override && override.protocolos) || PROTOCOLOS_FIX, turnos: (override && override.turnos) || TURNOS };
       window.__NOTAS = NOTAS;
       const DateReal = window.Date; const ahora = new DateReal(2030, 9, 9, 10, 32, 0).getTime();
       window.Date = class extends DateReal { constructor(...a) { if (a.length === 0) super(ahora); else super(...a); } static now() { return ahora; } };
@@ -281,7 +284,7 @@ async function principal() {
     a.d.getElementById("boton-buscar-disponibilidad-grilla").click();
     await esperar(a.w, () => resultado().length > 0, 400);
     assert(resultado().length > 0, "[Consultar disponibilidad] cuando la base vuelve a responder, muestra la disponibilidad normal" + (resultado() ? "" : " → " + msgCon().slice(0, 120)));
-    assert(a.w.__turnosConsulta === 7, `[Consultar disponibilidad] y la calcula con los turnos RECIÉN releídos de Entre Ríos (7), no con la lista vacía → ${a.w.__turnosConsulta}`);
+    assert(a.w.__turnosConsulta === 6, `[Consultar disponibilidad] y la calcula con los turnos RECIÉN releídos de Entre Ríos (6: los de hoy y los días siguientes; el de AYER ya no se lee porque el motor no mira hacia atrás), no con la lista vacía → ${a.w.__turnosConsulta}`);
   }
   // ===== 6. EL FORMULARIO NUEVO, de punta a punta: abrir "+ Nuevo turno", completarlo con clics reales y guardar =====
   {
