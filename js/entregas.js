@@ -17,14 +17,11 @@ let contadorFilasMedicamento = 0;
 let guardando = false;
 let temporizadorBusquedaDocumento = null;
 
-// --- Cache de pacientes en localStorage (etapa 10) ---
-// El listado de pacientes activos (~2.600 hoy) no cambia seguido: lo nuevo que
-// aparece son altas puntuales, no modificaciones al resto. Por eso el cache no
-// vence por minutos, sino por día: se guarda una vez y se reutiliza mientras sea
-// de hoy, sin importar cuántas veces se recargue la página o cuántas pestañas
-// estén abiertas en la misma computadora (localStorage se comparte entre ellas).
-// Ver conversación de la etapa 10 para el detalle de esta decisión.
-const CACHE_PACIENTES_KEY = "cache_pacientes_activos";
+// --- Cache de pacientes (B1) ---
+// Ahora vive en js/pacientes-cache.js, único para todas las pantallas: el listado se lee del
+// servidor como mucho una vez por semana en cada PC (vence a los 7 días). Estas tres funciones
+// quedan con el mismo nombre para no tocar el resto del archivo. Si pacientes-cache.js no
+// está cargado, se sigue sin caché (más lecturas, pero todo funciona).
 
 function fechaLocalHoy() {
   const d = new Date();
@@ -33,37 +30,15 @@ function fechaLocalHoy() {
 }
 
 function leerCachePacientes() {
-  try {
-    const crudo = localStorage.getItem(CACHE_PACIENTES_KEY);
-    if (!crudo) return null;
-    const datos = JSON.parse(crudo);
-    if (datos.fecha !== fechaLocalHoy()) return null; // es de un día anterior: se descarta
-    return datos.pacientes;
-  } catch (error) {
-    console.warn("No se pudo leer el cache de pacientes:", error);
-    return null;
-  }
+  return typeof PacientesCache !== "undefined" ? PacientesCache.leer() : null;
 }
 
 function guardarCachePacientes(pacientes) {
-  try {
-    localStorage.setItem(CACHE_PACIENTES_KEY, JSON.stringify({ fecha: fechaLocalHoy(), pacientes }));
-  } catch (error) {
-    // No debe romper el flujo si el navegador bloquea localStorage (navegación
-    // privada, cuota llena, etc.): simplemente se sigue sin cache.
-    console.warn("No se pudo guardar el cache de pacientes:", error);
-  }
+  if (typeof PacientesCache !== "undefined") PacientesCache.guardar(pacientes);
 }
 
 function agregarPacienteACache(paciente) {
-  try {
-    const actuales = leerCachePacientes() || [];
-    if (actuales.some((p) => p.id === paciente.id)) return;
-    actuales.push(paciente);
-    guardarCachePacientes(actuales);
-  } catch (error) {
-    console.warn("No se pudo actualizar el cache de pacientes:", error);
-  }
+  if (typeof PacientesCache !== "undefined") PacientesCache.agregar(paciente);
 }
 
 function normalizarTexto(texto) {

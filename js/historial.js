@@ -108,12 +108,11 @@ let contadorFilasMedCorreccion = 0;
 let enviandoCorreccion = false;
 let temporizadorBusquedaDocumentoHistorial = null;
 
-// --- Cache de pacientes en localStorage (etapa 10) ---
-// Misma clave y mismo criterio que entregas.js/egresos.js: vence por día, no por
-// minutos, y se comparte entre las pestañas abiertas en la misma computadora. Acá
-// además alimenta la búsqueda interna del panel de corrección (buscarPacienteCorreccion),
-// que ya usaba pacientesCacheHistorial sin ningún cambio adicional.
-const CACHE_PACIENTES_KEY = "cache_pacientes_activos";
+// --- Cache de pacientes (B1) ---
+// Ahora vive en js/pacientes-cache.js, único para todas las pantallas: el listado se lee del
+// servidor como mucho una vez por semana en cada PC (vence a los 7 días). Estas tres funciones
+// quedan con el mismo nombre para no tocar el resto del archivo. Si pacientes-cache.js no
+// está cargado, se sigue sin caché (más lecturas, pero todo funciona).
 
 function fechaLocalHoy() {
   const d = new Date();
@@ -122,35 +121,15 @@ function fechaLocalHoy() {
 }
 
 function leerCachePacientes() {
-  try {
-    const crudo = localStorage.getItem(CACHE_PACIENTES_KEY);
-    if (!crudo) return null;
-    const datos = JSON.parse(crudo);
-    if (datos.fecha !== fechaLocalHoy()) return null;
-    return datos.pacientes;
-  } catch (error) {
-    console.warn("No se pudo leer el cache de pacientes:", error);
-    return null;
-  }
+  return typeof PacientesCache !== "undefined" ? PacientesCache.leer() : null;
 }
 
 function guardarCachePacientes(pacientes) {
-  try {
-    localStorage.setItem(CACHE_PACIENTES_KEY, JSON.stringify({ fecha: fechaLocalHoy(), pacientes }));
-  } catch (error) {
-    console.warn("No se pudo guardar el cache de pacientes:", error);
-  }
+  if (typeof PacientesCache !== "undefined") PacientesCache.guardar(pacientes);
 }
 
 function agregarPacienteACache(paciente) {
-  try {
-    const actuales = leerCachePacientes() || [];
-    if (actuales.some((p) => p.id === paciente.id)) return;
-    actuales.push(paciente);
-    guardarCachePacientes(actuales);
-  } catch (error) {
-    console.warn("No se pudo actualizar el cache de pacientes:", error);
-  }
+  if (typeof PacientesCache !== "undefined") PacientesCache.agregar(paciente);
 }
 
 function normalizarTexto(texto) {

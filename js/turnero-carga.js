@@ -1,4 +1,4 @@
-(window.TURNERO_BUILD = window.TURNERO_BUILD || {}).carga = "B1-2026-10-11-a"; // marca de versión de este archivo (ver verificarVersionesTurnero)
+(window.TURNERO_BUILD = window.TURNERO_BUILD || {}).carga = "B1-2026-10-12-a"; // marca de versión de este archivo (ver verificarVersionesTurnero)
 // Lógica de la pantalla "Carga de turno" del módulo de Turnero (Etapas T1-T3).
 // T1: formulario base. T2: calculadora de fecha. T3: motor de búsqueda de huecos.
 // Integración con turnero-motor.js para disponibilidad física pura.
@@ -134,7 +134,6 @@ let pacienteSeleccionadoCarga = null;
 let protocolosSeleccionados = {}; // filaId -> { protocoloId, nombre, duracionMinutos }
 let contadorFilasProtocolo = 0;
 let guardandoTurno = false;
-let temporizadorBusquedaDocumentoCarga = null;
 let buscandoHuecos = false;
 
 // Etapa T2: modo de carga de la fecha del turno.
@@ -144,9 +143,6 @@ let modoFechaTurno = "dias";
 let turnosExistentes = []; // array de turnos ya cargados (para el motor)
 let ultimaBusquedaHuecos = null; // resultado del último motor.buscarHuecos()
 let huecoSeleccionado = null; // el hueco elegido por el usuario antes de guardar
-
-// --- Cache de pacientes en localStorage ---
-const CACHE_PACIENTES_KEY = "cache_pacientes_activos";
 
 function fechaLocalHoy() {
   const d = new Date();
@@ -342,37 +338,6 @@ function renderizarModoFecha() {
   if (typeof sincronizarFormularioCarga === "function") sincronizarFormularioCarga();
 }
 
-function leerCachePacientes() {
-  try {
-    const crudo = localStorage.getItem(CACHE_PACIENTES_KEY);
-    if (!crudo) return null;
-    const datos = JSON.parse(crudo);
-    if (datos.fecha !== fechaLocalHoy()) return null;
-    return datos.pacientes;
-  } catch (error) {
-    console.warn("No se pudo leer el cache de pacientes:", error);
-    return null;
-  }
-}
-
-function guardarCachePacientes(pacientes) {
-  try {
-    localStorage.setItem(CACHE_PACIENTES_KEY, JSON.stringify({ fecha: fechaLocalHoy(), pacientes }));
-  } catch (error) {
-    console.warn("No se pudo guardar el cache de pacientes:", error);
-  }
-}
-
-function agregarPacienteACache(paciente) {
-  try {
-    const actuales = leerCachePacientes() || [];
-    if (actuales.some((p) => p.id === paciente.id)) return;
-    actuales.push(paciente);
-    guardarCachePacientes(actuales);
-  } catch (error) {
-    console.warn("No se pudo actualizar el cache de pacientes:", error);
-  }
-}
 
 function normalizarTexto(texto) {
   return (texto || "")
@@ -381,6 +346,102 @@ function normalizarTexto(texto) {
     .replace(/[\u0300-\u036f]/g, "")
     .toLowerCase()
     .trim();
+}
+
+// ---------------------------------------------------------------------------------------------
+// B1 · Búsqueda de protocolos.
+// Antes: el texto tenía que estar tal cual dentro del nombre ("paclitaxel carbo" no encontraba
+// "Carboplatino + Paclitaxel semanal"). Ahora cada palabra escrita se busca por separado y en
+// cualquier orden; los protocolos cuyo nombre EMPIEZA con lo escrito (o tiene una palabra que
+// empieza así) salen primero. "act" también encuentra "AC-T" (se ignoran guiones y espacios).
+// ---------------------------------------------------------------------------------------------
+function soloAlfanumericos(textoNormalizado) {
+  return textoNormalizado.replace(/[^a-z0-9]/g, "");
+}
+
+// 0 = el nombre empieza con la palabra · 1 = alguna palabra del nombre empieza con ella · 2 = la contiene
+// · 3 = solo aparece ignorando guiones/espacios (ej. "act" en "AC-T") · -1 = no está.
+function puntajePalabraEnNombre(palabra, nombre, nombreCompacto) {
+  if (nombre.startsWith(palabra)) return 0;
+  let desde = nombre.indexOf(palabra);
+  if (desde < 0) {
+    return palabra.length >= 3 && nombreCompacto.includes(soloAlfanumericos(palabra)) && soloAlfanumericos(palabra).length >= 3 ? 3 : -1;
+  }
+  while (desde >= 0) {
+    if (desde === 0 || !/[a-z0-9]/.test(nombre[desde - 1])) return 1;
+    desde = nombre.indexOf(palabra, desde + 1);
+  }
+  return 2;
+}
+
+function buscarProtocolosPorTexto(texto, catalogo) {
+  const palabras = normalizarTexto(texto).split(/\s+/).filter(Boolean);
+  if (palabras.length === 0) return [];
+  const resultados = [];
+  (catalogo || []).forEach((p) => {
+    const nombre = normalizarTexto(p.nombre);
+    const compacto = soloAlfanumericos(nombre);
+    let puntaje = 0;
+    for (const palabra of palabras) {
+      const s = puntajePalabraEnNombre(palabra, nombre, compacto);
+      if (s < 0) return;
+      puntaje += s;
+    }
+    resultados.push({ p, puntaje, nombre });
+  });
+  resultados.sort((a, b) => a.puntaje - b.puntaje || (a.nombre < b.nombre ? -1 : a.nombre > b.nombre ? 1 : 0));
+  return resultados.map((r) => r.p);
+}
+
+function distanciaEdicion(a, b) {
+  if (a === b) return 0;
+  let previa = Array.from({ length: b.length + 1 }, (_, j) => j);
+  for (let i = 1; i <= a.length; i++) {
+    const actual = [i];
+    for (let j = 1; j <= b.length; j++) {
+      actual[j] = Math.min(previa[j] + 1, actual[j - 1] + 1, previa[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
+    }
+    previa = actual;
+  }
+  return previa[b.length];
+}
+
+// Protocolos activos del catálogo con un nombre PARECIDO (no igual) al que se está por crear: mismas
+// palabras en otro orden, mismo nombre sin guiones/espacios/tildes, uno dentro del otro, o una letra de
+// diferencia. Sirve para avisar antes de crear un duplicado ("ACT" cuando ya existe "AC-T").
+function protocolosParecidos(texto, catalogo) {
+  const crudo = (texto || "").toString().trim().toLowerCase();
+  const clave = normalizarTexto(texto);
+  const compacto = soloAlfanumericos(clave);
+  if (compacto.length < 3) return [];
+  const palabras = clave.split(/[^a-z0-9]+/).filter(Boolean);
+  const conjunto = new Set(palabras);
+  const encontrados = [];
+  (catalogo || []).forEach((p) => {
+    if (p.activo === false) return;
+    if ((p.nombre || "").toString().trim().toLowerCase() === crudo) return; // el mismo nombre: lo frena la validación de duplicados
+    const claveP = normalizarTexto(p.nombre);
+    const compactoP = soloAlfanumericos(claveP);
+    const palabrasP = claveP.split(/[^a-z0-9]+/).filter(Boolean);
+    const conjuntoP = new Set(palabrasP);
+    let rango = -1;
+    if (compacto === compactoP) rango = 0;
+    else if (conjunto.size === conjuntoP.size && palabras.every((w) => conjuntoP.has(w))) rango = 0;
+    else {
+      const [corto, largo] = compacto.length <= compactoP.length ? [compacto, compactoP] : [compactoP, compacto];
+      const [setCorto, setLargo] = conjunto.size <= conjuntoP.size ? [conjunto, conjuntoP] : [conjuntoP, conjunto];
+      if (corto.length >= 4 && largo.includes(corto)) rango = 1;
+      else if (setCorto.size >= 2 && [...setCorto].every((w) => setLargo.has(w))) rango = 1;
+      else {
+        const largoRef = Math.max(compacto.length, compactoP.length);
+        const tolerancia = largoRef >= 10 ? 2 : largoRef >= 6 ? 1 : 0;
+        if (tolerancia > 0 && distanciaEdicion(compacto, compactoP) <= tolerancia) rango = 2;
+      }
+    }
+    if (rango >= 0) encontrados.push({ p, rango, claveP });
+  });
+  encontrados.sort((a, b) => a.rango - b.rango || (a.claveP < b.claveP ? -1 : a.claveP > b.claveP ? 1 : 0));
+  return encontrados.slice(0, 6).map((r) => r.p);
 }
 
 function capitalizarPalabras(texto) {
@@ -485,16 +546,24 @@ async function iniciarCargaTurno(user, datosUsuario) {
   actualizarVisibilidadCamposEspeciales();
 }
 
-async function cargarPacientesCarga() {
-  const enCache = leerCachePacientes();
-  if (enCache) {
-    pacientesCacheCarga = enCache;
-    return;
+// --- Pacientes: caché único (js/pacientes-cache.js, vence a los 7 días) y buscador único (js/pacientes-buscador.js) ---
+let buscadorPacientesCarga = null;
+function buscadorPacientes() {
+  if (!buscadorPacientesCarga) {
+    buscadorPacientesCarga = PacientesBuscador.montar({
+      obtenerLista: () => pacientesCacheCarga,
+      fijarLista: (lista) => { pacientesCacheCarga = lista; },
+      onSeleccion: alElegirPacienteCarga,
+      onVerificacion: alVerificarPacienteCarga
+    });
   }
-  const snapshot = await db.collection("pacientes").where("activo", "==", true).get();
-  pacientesCacheCarga = snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
-  guardarCachePacientes(pacientesCacheCarga);
+  return buscadorPacientesCarga;
 }
+
+async function cargarPacientesCarga() {
+  await buscadorPacientes().cargar();
+}
+
 
 async function cargarMedicosCarga() {
   const snapshot = await db.collection("turneroMedicos").get();
@@ -695,94 +764,22 @@ async function asegurarTurnosDelDiaOAvisar(fechaISOTexto) {
 // --- Búsqueda y alta rápida de paciente ---
 
 function buscarPaciente(texto) {
-  const cont = document.getElementById("resultados-busqueda-paciente");
-  const sinResultados = document.getElementById("sin-resultados");
-  document.getElementById("bloque-alta-rapida").style.display = "none";
-  cont.innerHTML = "";
-
-  if (!texto.trim()) {
-    sinResultados.style.display = "none";
-    return;
-  }
-
-  const norm = normalizarTexto(texto);
-  const digitos = soloDigitos(texto);
-  const encontrados = pacientesCacheCarga.filter((p) => {
-    const coincideNombre = normalizarTexto(`${p.apellido} ${p.nombre}`).includes(norm);
-    const coincideDocumento = digitos && p.numeroDocumento.includes(digitos);
-    return coincideNombre || coincideDocumento;
-  });
-
-  if (encontrados.length === 0) {
-    sinResultados.style.display = "block";
-    buscarPacientePorDocumentoEnSegundoPlano(digitos);
-    return;
-  }
-  sinResultados.style.display = "none";
-
-  encontrados.slice(0, 8).forEach((p) => {
-    const div = document.createElement("div");
-    div.className = "resultado-busqueda";
-    div.innerHTML = `<span>${escaparHtml(p.apellido)}, ${escaparHtml(p.nombre)} · ${p.tipoDocumento} ${p.numeroDocumento}</span>
-      <button type="button" class="enlace-accion" data-id="${p.id}">usar</button>`;
-    div.querySelector("button").addEventListener("click", () => seleccionarPaciente(p.id));
-    cont.appendChild(div);
-  });
+  buscadorPacientes().buscar(texto);
 }
 
-function buscarPacientePorDocumentoEnSegundoPlano(digitos) {
-  clearTimeout(temporizadorBusquedaDocumentoCarga);
-  if (digitos.length < 7 || digitos.length > 9) return;
-
-  temporizadorBusquedaDocumentoCarga = setTimeout(async () => {
-    const digitosActuales = soloDigitos(document.getElementById("campo-buscar-paciente").value);
-    if (digitosActuales !== digitos) return;
-
-    try {
-      const snapshot = await db.collection("pacientes")
-        .where("numeroDocumento", "==", digitos)
-        .where("activo", "==", true)
-        .get();
-      if (snapshot.empty) return;
-
-      snapshot.docs.forEach((doc) => {
-        const p = { id: doc.id, ...doc.data() };
-        if (!pacientesCacheCarga.some((existente) => existente.id === p.id)) {
-          pacientesCacheCarga.push(p);
-          agregarPacienteACache(p);
-        }
-      });
-
-      buscarPaciente(document.getElementById("campo-buscar-paciente").value);
-    } catch (error) {
-      console.error("Error al buscar paciente por documento:", error);
-    }
-  }, 500);
-}
 
 function actualizarListadoPacientes() {
-  const boton = document.getElementById("boton-actualizar-pacientes");
-  if (boton) { boton.disabled = true; boton.textContent = "actualizando..."; }
-
-  db.collection("pacientes").where("activo", "==", true).get()
-    .then((snapshot) => {
-      pacientesCacheCarga = snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
-      guardarCachePacientes(pacientesCacheCarga);
-      buscarPaciente(document.getElementById("campo-buscar-paciente").value);
-    })
-    .catch((error) => console.error("Error al actualizar el listado de pacientes:", error))
-    .finally(() => {
-      if (boton) { boton.disabled = false; boton.textContent = "actualizar listado"; }
-    });
+  return buscadorPacientes().actualizarListado();
 }
 
 function seleccionarPaciente(id) {
-  pacienteSeleccionadoCarga = pacientesCacheCarga.find((p) => p.id === id);
-  document.getElementById("campo-buscar-paciente").value = "";
-  document.getElementById("resultados-busqueda-paciente").innerHTML = "";
-  document.getElementById("sin-resultados").style.display = "none";
-  document.getElementById("bloque-alta-rapida").style.display = "none";
+  buscadorPacientes().seleccionar(id);
+}
+
+function alElegirPacienteCarga(paciente) {
+  pacienteSeleccionadoCarga = paciente;
   renderizarPacienteSeleccionado();
+  cargarHistorialProtocolosPaciente(paciente); // B1: sugerencias "Ya tuvo" (1 consulta por paciente, queda en memoria)
   // Si ya había un médico elegido (por ejemplo Occhipinti), refrescar el bloque
   // porque la sede automática depende de la obra social del paciente recién elegido.
   if (document.getElementById("campo-medico").value) {
@@ -790,7 +787,37 @@ function seleccionarPaciente(id) {
   }
 }
 
+// El listado de pacientes puede tener hasta 7 días: al elegir uno se lo confirma con el servidor
+// (1 lectura). Si cambió algo (por ejemplo la obra social, que define la sede automática) se corrige
+// la selección y se avisa; si fue dado de baja, se la quita.
+function alVerificarPacienteCarga(resultado) {
+  const elegido = pacienteSeleccionadoCarga;
+  if (!resultado || !elegido || elegido.id !== resultado.paciente.id) return; // ya eligió a otro o lo quitó
+  if (resultado.estado === "actualizado") {
+    pacienteSeleccionadoCarga = resultado.paciente;
+    const lista = pacientesCacheCarga;
+    const i = lista.findIndex((p) => p.id === resultado.paciente.id);
+    if (i >= 0) lista[i] = resultado.paciente;
+    renderizarPacienteSeleccionado();
+    if (document.getElementById("campo-medico").value) actualizarBloqueMedico();
+    mostrarMensajeGeneral(
+      `Se actualizaron los datos de ${resultado.paciente.apellido}, ${resultado.paciente.nombre} (obra social: ${resultado.paciente.obraSocial || "sin especificar"}).`,
+      "info"
+    );
+  } else if (resultado.estado === "baja") {
+    pacientesCacheCarga = pacientesCacheCarga.filter((p) => p.id !== resultado.paciente.id);
+    pacienteSeleccionadoCarga = null;
+    renderizarPacienteSeleccionado();
+    if (document.getElementById("campo-medico").value) actualizarBloqueMedico();
+    mostrarMensajeGeneral(
+      `${resultado.paciente.apellido}, ${resultado.paciente.nombre} figura dado de baja en el sistema. Si es un error, reactivalo desde Pacientes.`,
+      "error"
+    );
+  }
+}
+
 function renderizarPacienteSeleccionado() {
+  actualizarSugerenciasProtocolos(); // sigue al paciente elegido, verificado, dado de baja o quitado
   const cont = document.getElementById("paciente-seleccionado");
   const busqueda = document.getElementById("bloque-busqueda-paciente");
   if (!pacienteSeleccionadoCarga) {
@@ -875,8 +902,7 @@ async function altaRapidaPaciente() {
     });
 
     const pacienteNuevo = { id, tipoDocumento, numeroDocumento, nombre, apellido, obraSocial, activo: true };
-    pacientesCacheCarga.push(pacienteNuevo);
-    agregarPacienteACache(pacienteNuevo);
+    buscadorPacientes().agregar(pacienteNuevo);
     seleccionarPaciente(id);
 
     document.getElementById("bloque-alta-rapida").style.display = "none";
@@ -987,6 +1013,7 @@ function resolverSedesPosiblesMedico(medicoDoc) {
 }
 
 function actualizarBloqueMedico() {
+  actualizarSugerenciasProtocolos(); // sigue al médico elegido
   const medicoValor = document.getElementById("campo-medico").value;
   const bloqueMedicoOtro = document.getElementById("bloque-medico-otro");
   const sedeAutomaticaInfo = document.getElementById("sede-automatica-info");
@@ -1069,7 +1096,8 @@ function agregarFilaProtocolo() {
     </div>
     <div class="campo" style="margin-bottom:0;">
       <label>Nombre del protocolo</label>
-      <input type="text" class="inp-buscar-protocolo" placeholder="Escribí el nombre o parte del nombre" />
+      <input type="text" class="inp-buscar-protocolo" placeholder="Escribí una o varias palabras del nombre, en cualquier orden" />
+      <div class="sugerencias-protocolo"></div>
       <div class="resultados-protocolo"></div>
     </div>
   `;
@@ -1080,6 +1108,132 @@ function agregarFilaProtocolo() {
   lista.appendChild(fila);
 
   protocolosSeleccionados[id] = null;
+  actualizarSugerenciasProtocolos();
+}
+
+// ---------------------------------------------------------------------------------------------
+// B1 · Sugerencias de protocolo en cada fila (mientras el campo está vacío):
+//   "Ya tuvo": los protocolos de los turnos activos del paciente elegido (1 consulta por paciente, queda en memoria).
+//   "Más usados de <médico>": los protocolos que más aparecen en los turnos que la pantalla ya tiene en memoria
+//   (los de la grilla visible y la ventana de turnos): no cuesta ninguna lectura extra. Es una ayuda, no un historial completo.
+// Solo se ofrecen protocolos que siguen activos en el catálogo y que no están ya elegidos en otra fila.
+// ---------------------------------------------------------------------------------------------
+const MAX_SUGERENCIAS_PROTOCOLO = 6;
+const historialProtocolosPacientes = {}; // pacienteId -> [{ protocoloId, nombre, veces, ultima }]
+
+function contarProtocolosEnTurnos(turnos) {
+  const cuentas = {};
+  (turnos || []).forEach((t) => {
+    if (!t || (t.estado && t.estado !== "activo")) return;
+    (t.protocolos || []).forEach((pr) => {
+      if (!pr || !pr.protocoloId) return;
+      const c = cuentas[pr.protocoloId] || (cuentas[pr.protocoloId] = { protocoloId: pr.protocoloId, nombre: pr.nombre, veces: 0, ultima: "" });
+      c.veces++;
+      if ((t.fecha || "") > c.ultima) c.ultima = t.fecha || "";
+    });
+  });
+  return Object.values(cuentas).sort((a, b) =>
+    b.veces - a.veces || (a.ultima < b.ultima ? 1 : a.ultima > b.ultima ? -1 : 0) || (a.nombre || "").localeCompare(b.nombre || "", "es"));
+}
+
+async function cargarHistorialProtocolosPaciente(paciente) {
+  if (!paciente || !paciente.id || historialProtocolosPacientes[paciente.id]) return;
+  try {
+    // Misma forma de consulta que ya usa la regla "un turno por día" (solo turnos activos de este paciente).
+    const snapshot = await db.collection("turnos")
+      .where("paciente.id", "==", paciente.id)
+      .where("estado", "==", "activo")
+      .limit(80)
+      .get();
+    historialProtocolosPacientes[paciente.id] = contarProtocolosEnTurnos(snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() })));
+  } catch (error) {
+    console.error("No se pudo leer el historial de protocolos del paciente:", error);
+    return; // sin sugerencias; la búsqueda por texto sigue andando
+  }
+  if (pacienteSeleccionadoCarga && pacienteSeleccionadoCarga.id === paciente.id) actualizarSugerenciasProtocolos();
+}
+
+function turnosEnMemoriaDelMedico(medicoId) {
+  const vistos = new Set();
+  const lista = [];
+  const fuentes = [turnosExistentes, typeof turnosCacheGrilla !== "undefined" ? turnosCacheGrilla : []];
+  fuentes.forEach((fuente) => (fuente || []).forEach((t) => {
+    if (!t || t.medicoId !== medicoId || (t.id && vistos.has(t.id))) return;
+    if (t.id) vistos.add(t.id);
+    lista.push(t);
+  }));
+  return lista;
+}
+
+function actualizarSugerenciasProtocolos() {
+  const filas = document.querySelectorAll("#lista-protocolos .fila-medicamento");
+  if (!filas.length) return;
+  const elegidos = new Set(Object.values(protocolosSeleccionados).filter(Boolean).map((p) => p.protocoloId));
+  const catalogo = {};
+  protocolosCacheCarga.forEach((p) => { if (p.activo !== false) catalogo[p.id] = p; });
+  const sugeribles = (conteos) => (conteos || []).filter((c) => catalogo[c.protocoloId]);
+
+  const grupos = [];
+  const yaOfrecidos = new Set();
+  const armar = (titulo, conteos) => {
+    const protocolos = sugeribles(conteos).filter((c) => !elegidos.has(c.protocoloId) && !yaOfrecidos.has(c.protocoloId))
+      .slice(0, MAX_SUGERENCIAS_PROTOCOLO).map((c) => catalogo[c.protocoloId]);
+    protocolos.forEach((p) => yaOfrecidos.add(p.id));
+    if (protocolos.length) grupos.push({ titulo, protocolos });
+  };
+
+  if (pacienteSeleccionadoCarga) armar("Ya tuvo:", historialProtocolosPacientes[pacienteSeleccionadoCarga.id]);
+  const selectMedico = document.getElementById("campo-medico");
+  const medicoValor = selectMedico ? selectMedico.value : "";
+  if (medicoValor && medicoValor !== "otro") {
+    const medico = medicosCacheCarga.find((m) => m.id === medicoValor);
+    if (medico) armar(`Más usados de ${medico.nombre}:`, contarProtocolosEnTurnos(turnosEnMemoriaDelMedico(medico.id)));
+  }
+
+  filas.forEach((fila) => {
+    const cont = fila.querySelector(".sugerencias-protocolo");
+    if (!cont) return;
+    cont.innerHTML = "";
+    const input = fila.querySelector("input.inp-buscar-protocolo");
+    if (!grupos.length || (input && input.value.trim() !== "")) { cont.style.display = "none"; return; }
+    cont.style.display = "block";
+    grupos.forEach((g) => {
+      const grupo = document.createElement("div");
+      grupo.className = "grupo-sugerencias";
+      grupo.style.cssText = "display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin-top:6px;";
+      const titulo = document.createElement("span");
+      titulo.className = "sugerencias-titulo";
+      titulo.style.cssText = "font-size:12px;color:var(--color-muted);";
+      titulo.textContent = g.titulo;
+      grupo.appendChild(titulo);
+      g.protocolos.forEach((p) => {
+        const chip = document.createElement("button");
+        chip.type = "button";
+        chip.className = "chip-protocolo";
+        chip.style.cssText = "font-size:13px;padding:3px 10px;border:1px solid var(--color-border, #ccc);border-radius:14px;background:var(--color-surface, #fff);cursor:pointer;";
+        chip.title = `${p.duracionMinutos} min`;
+        chip.textContent = p.nombre;
+        chip.addEventListener("click", () => elegirProtocoloEnFila(fila.id, p));
+        grupo.appendChild(chip);
+      });
+      cont.appendChild(grupo);
+    });
+  });
+}
+
+// Elegir un protocolo del catálogo en una fila (desde un resultado de la búsqueda o desde una sugerencia).
+function elegirProtocoloEnFila(filaId, p) {
+  protocolosSeleccionados[filaId] = {
+    protocoloId: p.id,
+    nombre: p.nombre,
+    duracionMinutos: p.duracionMinutos
+  };
+  const fila = document.getElementById(filaId);
+  if (!fila) return;
+  fila.querySelector("input.inp-buscar-protocolo").value = p.nombre;
+  fila.querySelector(".resultados-protocolo").innerHTML = "";
+  actualizarResumenDuracion();
+  actualizarSugerenciasProtocolos();
 }
 
 function actualizarBuscadorProtocolo(filaId, texto) {
@@ -1089,13 +1243,13 @@ function actualizarBuscadorProtocolo(filaId, texto) {
   if (!texto.trim()) {
     protocolosSeleccionados[filaId] = null;
     actualizarResumenDuracion();
+    actualizarSugerenciasProtocolos();
     return;
   }
+  actualizarSugerenciasProtocolos(); // mientras se escribe, en lugar de las sugerencias se ven los resultados
 
-  const norm = normalizarTexto(texto);
-  const encontrados = protocolosCacheCarga.filter((p) =>
-    normalizarTexto(p.nombre).includes(norm)
-  );
+  // B1: cada palabra se busca por separado y en cualquier orden; los que empiezan con lo escrito van primero.
+  const encontrados = buscarProtocolosPorTexto(texto, protocolosCacheCarga);
 
   // Etapa 1 del plan post-integración: antes se cortaba en los primeros 5 resultados y
   // el resto era directamente inalcanzable (protocolos con más de 10 variantes con el
@@ -1111,17 +1265,7 @@ function actualizarBuscadorProtocolo(filaId, texto) {
     div.className = "resultado-busqueda";
     div.innerHTML = `<span>${escaparHtml(p.nombre)} (${p.duracionMinutos} min)</span>
       <button type="button" class="enlace-accion">usar</button>`;
-    div.querySelector("button").addEventListener("click", () => {
-      protocolosSeleccionados[filaId] = {
-        protocoloId: p.id,
-        nombre: p.nombre,
-        duracionMinutos: p.duracionMinutos
-      };
-      const inputBusqueda = document.querySelector(`#${filaId} input`);
-      inputBusqueda.value = p.nombre;
-      resultados.innerHTML = "";
-      actualizarResumenDuracion();
-    });
+    div.querySelector("button").addEventListener("click", () => elegirProtocoloEnFila(filaId, p));
     listaScroll.appendChild(div);
   });
 
@@ -1205,7 +1349,7 @@ function construirFormularioProtocoloNuevo(filaId, nombrePropuesto) {
   mensaje.style.cssText = "font-size:12px;";
 
   botonAgregar.addEventListener("click", () =>
-    agregarProtocoloNuevoCarga(filaId, nombrePropuesto, inputDuracion, botonAgregar, mensaje)
+    agregarProtocoloNuevoCarga(filaId, nombrePropuesto, inputDuracion, botonAgregar, mensaje, bloque)
   );
 
   filaControles.appendChild(inputDuracion);
@@ -1216,7 +1360,40 @@ function construirFormularioProtocoloNuevo(filaId, nombrePropuesto) {
   return bloque;
 }
 
-async function agregarProtocoloNuevoCarga(filaId, nombre, inputDuracion, boton, mensaje) {
+// B1 · Antes de crear un protocolo nuevo al vuelo:
+//   1) se vuelve a leer el catálogo (alguien pudo haberlo creado en otra PC hace un rato y esta pantalla no lo tiene);
+//   2) si existe uno con el mismo nombre, no se crea;
+//   3) si hay nombres PARECIDOS (otro orden, sin guion, una letra distinta…) se avisa con la lista y un botón "usar"
+//      por cada uno; recién con un segundo clic en "Crear igual" se crea. Así no se duplican "AC-T" y "ACT".
+function mostrarAvisoProtocolosParecidos(bloque, filaId, parecidos) {
+  const anterior = bloque.querySelector(".aviso-protocolo-parecido");
+  if (anterior) anterior.remove();
+  const aviso = document.createElement("div");
+  aviso.className = "aviso-protocolo-parecido";
+  aviso.style.cssText = "display:flex;flex-direction:column;gap:4px;padding:6px 8px;border:1px solid var(--color-warning, #d9a400);border-radius:6px;font-size:13px;";
+  const titulo = document.createElement("span");
+  titulo.textContent = parecidos.length === 1
+    ? "Ya hay un protocolo con un nombre parecido. ¿Es este?"
+    : "Ya hay protocolos con un nombre parecido. ¿Es alguno de estos?";
+  aviso.appendChild(titulo);
+  parecidos.forEach((p) => {
+    const fila = document.createElement("div");
+    fila.style.cssText = "display:flex;justify-content:space-between;align-items:center;gap:8px;";
+    const detalle = document.createElement("span");
+    detalle.textContent = `${p.nombre} (${p.duracionMinutos} min)`;
+    const usar = document.createElement("button");
+    usar.type = "button";
+    usar.className = "enlace-accion";
+    usar.textContent = "usar";
+    usar.addEventListener("click", () => elegirProtocoloEnFila(filaId, p));
+    fila.appendChild(detalle);
+    fila.appendChild(usar);
+    aviso.appendChild(fila);
+  });
+  bloque.appendChild(aviso);
+}
+
+async function agregarProtocoloNuevoCarga(filaId, nombre, inputDuracion, boton, mensaje, bloque) {
   const duracionMinutos = parseInt(inputDuracion.value, 10);
   mensaje.textContent = "";
   mensaje.style.color = "";
@@ -1228,16 +1405,31 @@ async function agregarProtocoloNuevoCarga(filaId, nombre, inputDuracion, boton, 
   }
 
   const clave = normalizarTexto(nombre);
-  const yaExiste = protocolosCacheCarga.some(
-    (p) => p.activo !== false && normalizarTexto(p.nombre) === clave
-  );
-  if (yaExiste) {
+  const hayIgual = () => protocolosCacheCarga.some((p) => p.activo !== false && normalizarTexto(p.nombre) === clave);
+  const avisarYaExiste = () => {
     mensaje.textContent = "Ese protocolo ya está en el catálogo — buscalo de nuevo, puede que aparezca con otra grafía.";
     mensaje.style.color = "var(--color-danger)";
-    return;
+  };
+  if (hayIgual()) { avisarYaExiste(); return; }
+
+  boton.disabled = true; // también evita que un doble clic cree dos veces
+  if (boton.dataset.confirmado !== "1") {
+    try {
+      await cargarProtocolosCarga(true);
+    } catch (error) {
+      console.error("No se pudo releer el catálogo de protocolos antes de crear uno nuevo:", error);
+    }
+    if (hayIgual()) { boton.disabled = false; avisarYaExiste(); return; }
+    const parecidos = protocolosParecidos(nombre, protocolosCacheCarga);
+    if (parecidos.length > 0) {
+      mostrarAvisoProtocolosParecidos(bloque, filaId, parecidos);
+      boton.dataset.confirmado = "1";
+      boton.textContent = "Crear igual";
+      boton.disabled = false;
+      return;
+    }
   }
 
-  boton.disabled = true;
   try {
     const nuevoDoc = {
       nombre,
@@ -1250,23 +1442,15 @@ async function agregarProtocoloNuevoCarga(filaId, nombre, inputDuracion, boton, 
 
     // Se agrega a la caché local (con valores planos, sin el sentinel de
     // serverTimestamp) para que quede disponible sin recargar la página.
-    protocolosCacheCarga.push({
+    const protocoloNuevo = {
       id: ref.id,
       nombre,
       duracionMinutos,
       activo: true,
       claveNormalizada: clave
-    });
-
-    protocolosSeleccionados[filaId] = {
-      protocoloId: ref.id,
-      nombre,
-      duracionMinutos
     };
-    const inputBusqueda = document.querySelector(`#${filaId} input.inp-buscar-protocolo`);
-    if (inputBusqueda) inputBusqueda.value = nombre;
-    document.querySelector(`#${filaId} .resultados-protocolo`).innerHTML = "";
-    actualizarResumenDuracion();
+    protocolosCacheCarga.push(protocoloNuevo);
+    elegirProtocoloEnFila(filaId, protocoloNuevo);
   } catch (error) {
     console.error("Error al crear protocolo nuevo:", error);
     mensaje.textContent = "No se pudo guardar el protocolo. Reintentá en unos segundos.";
@@ -1285,6 +1469,7 @@ function quitarFilaProtocolo(filaId) {
   document.getElementById(filaId).remove();
   renumerarFilasProtocolo();
   actualizarResumenDuracion();
+  actualizarSugerenciasProtocolos();
 }
 
 // Deja las etiquetas en 1, 2, 3… según el orden actual (al quitar una fila del medio no queda un hueco).
@@ -1756,8 +1941,6 @@ async function buscarYMostrarHuecos(datosBasicos, pacienteInfo) {
     document.getElementById("boton-guardar-turno").disabled = false;
   }
 }
-
-
 
 // Mostrar sobreturno cuando el motor agotó los 10 días sin encontrar ningún sillón físico
 // libre. Una sola acción manual y deliberada (no una elección entre variantes) — mismo

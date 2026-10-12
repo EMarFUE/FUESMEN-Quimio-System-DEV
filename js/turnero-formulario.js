@@ -22,15 +22,15 @@
 // una marca de versión (window.TURNERO_BUILD); las páginas llaman a verificarVersionesTurnero()
 // al cargar y, si alguno no coincide, muestran un aviso que nombra el archivo. Cada entrega nueva
 // cambia la marca en TODOS los archivos a la vez (y el ?v= de los scripts en las páginas).
-const BUILD_ESPERADO_TURNERO = "B1-2026-10-11-a";
-(window.TURNERO_BUILD = window.TURNERO_BUILD || {}).formulario = "B1-2026-10-11-a";
+const BUILD_ESPERADO_TURNERO = "B1-2026-10-12-a";
+(window.TURNERO_BUILD = window.TURNERO_BUILD || {}).formulario = "B1-2026-10-12-a";
 
 function verificarVersionesTurnero(nombres) {
   const marcas = window.TURNERO_BUILD || {};
   const desactualizados = nombres.filter((n) => marcas[n] !== BUILD_ESPERADO_TURNERO);
   if (desactualizados.length === 0) return true;
 
-  const archivos = desactualizados.map((n) => `turnero-${n}.js`).join(", ");
+  const archivos = desactualizados.map((n) => (n.indexOf("pacientes-") === 0 ? `${n}.js` : `turnero-${n}.js`)).join(", ");
   console.warn(`Archivos del sistema desactualizados (se esperaba la versión ${BUILD_ESPERADO_TURNERO}): ${archivos}`, marcas);
   if (document.getElementById("aviso-versiones-turnero")) return false;
 

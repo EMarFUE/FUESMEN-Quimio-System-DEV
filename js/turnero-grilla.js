@@ -1,4 +1,4 @@
-(window.TURNERO_BUILD = window.TURNERO_BUILD || {}).grilla = "B1-2026-10-11-a"; // marca de versión de este archivo (ver verificarVersionesTurnero)
+(window.TURNERO_BUILD = window.TURNERO_BUILD || {}).grilla = "B1-2026-10-12-a"; // marca de versión de este archivo (ver verificarVersionesTurnero)
 // Vista de agenda semanal — Etapa T6 del Módulo de Turnero.
 // Fase 1 (de 3): grilla de solo lectura. Elegir sede, navegar la semana, ver los
 // turnos ya cargados como tarjetas dentro de su día y horario, con el sillón
@@ -1856,7 +1856,7 @@ function agregarFilaProtocoloModificar(protocoloExistente) {
     </div>
     <div class="campo" style="margin-bottom:0;">
       <label>Nombre del protocolo</label>
-      <input type="text" class="inp-buscar-protocolo" value="${protocoloExistente ? escaparHtmlGrilla(protocoloExistente.nombre) : ""}" placeholder="Escribí el nombre o parte del nombre" />
+      <input type="text" class="inp-buscar-protocolo" value="${protocoloExistente ? escaparHtmlGrilla(protocoloExistente.nombre) : ""}" placeholder="Escribí una o varias palabras del nombre" />
       <div class="resultados-protocolo"></div>
     </div>
   `;
@@ -1885,8 +1885,7 @@ function actualizarBuscadorProtocoloModificar(filaId, texto) {
     return;
   }
 
-  const norm = normalizarTexto(texto);
-  const encontrados = protocolosCacheCarga.filter(p => normalizarTexto(p.nombre).includes(norm));
+  const encontrados = buscarProtocolosPorTexto(texto, protocolosCacheCarga); // B1: palabras sueltas en cualquier orden
 
   // Etapa 1 del plan post-integración: misma corrección que en actualizarBuscadorProtocolo()
   // de turnero-carga.js — antes se cortaba en 5 resultados sin scroll y el resto quedaba
@@ -2251,7 +2250,7 @@ function agregarFilaProtocoloConsultaGrilla() {
     </div>
     <div class="campo" style="margin-bottom:0;">
       <label>Nombre del protocolo</label>
-      <input type="text" class="inp-buscar-protocolo" placeholder="Escribí el nombre o parte del nombre" />
+      <input type="text" class="inp-buscar-protocolo" placeholder="Escribí una o varias palabras del nombre" />
       <div class="resultados-protocolo"></div>
     </div>
   `;
@@ -2273,8 +2272,7 @@ function actualizarBuscadorProtocoloConsultaGrilla(filaId, texto) {
     return;
   }
 
-  const norm = normalizarTexto(texto);
-  const encontrados = protocolosCacheCarga.filter(p => normalizarTexto(p.nombre).includes(norm));
+  const encontrados = buscarProtocolosPorTexto(texto, protocolosCacheCarga); // B1: palabras sueltas en cualquier orden
 
   // Etapa 1 del plan post-integración: misma corrección que en actualizarBuscadorProtocolo()
   // de turnero-carga.js — antes se cortaba en 5 resultados sin scroll y el resto quedaba

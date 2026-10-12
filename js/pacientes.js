@@ -218,6 +218,7 @@ async function guardarPaciente() {
         apellido,
         obraSocial
       });
+      invalidarCachePacientes();
       mostrarMensajeForm(`Paciente actualizado.${avisoObraSocial}`, "exito");
     } else {
       const existente = await db.collection("pacientes").doc(id).get();
@@ -235,6 +236,7 @@ async function guardarPaciente() {
         activo: true,
         creadoEn: firebase.firestore.FieldValue.serverTimestamp()
       });
+      invalidarCachePacientes();
       mostrarMensajeForm(`Paciente creado.${avisoObraSocial}`, "exito");
     }
     limpiarCamposFormulario();
@@ -280,9 +282,16 @@ function editarPaciente(id) {
   window.scrollTo({ top: 0, behavior: "smooth" });
 }
 
+// B1: el listado de pacientes que usan las demás pantallas vive en caché hasta 7 días (js/pacientes-cache.js).
+// Cualquier cambio hecho acá lo invalida en esta PC, así la próxima búsqueda ya lo ve.
+function invalidarCachePacientes() {
+  if (typeof PacientesCache !== "undefined") PacientesCache.invalidar();
+}
+
 async function cambiarEstadoPaciente(id, activo) {
   try {
     await db.collection("pacientes").doc(id).update({ activo });
+    invalidarCachePacientes();
     await cargarPacientes();
   } catch (error) {
     console.error("Error al cambiar estado del paciente:", error);
