@@ -9,7 +9,7 @@ function assert(cond, msg) { if (!cond) { throw new Error("FALLA: " + msg); } co
 const REPO = process.env.REPO_DIR || path.join(__dirname, "../repo");
 const leer = (p) => fs.readFileSync(path.join(REPO, p), "utf8");
 const srcHtml = leer("turnero/agenda.html");
-const SCRIPTS = ["js/turnero-motor.js", "js/turnero-formulario.js", "js/pacientes-cache.js", "js/pacientes-buscador.js", "js/turnero-carga.js", "js/turnero-grilla.js", "js/turnero-dia.js"].map(leer);
+const SCRIPTS = ["js/turnero-motor.js", "js/turnero-formulario.js", "js/pacientes-cache.js", "js/pacientes-buscador.js", "js/turnero-carga.js", "js/turnero-grilla.js", "js/turnero-dia.js", "js/turnero-puesto.js"].map(leer);
 
 const SEDES = [
   { id: "emilio-civit", nombre: "Emilio Civit", horaApertura: "08:00", horaCierre: "14:00", diasAtencion: ["lunes", "martes", "miercoles", "jueves", "viernes"],
@@ -85,19 +85,19 @@ async function abrirAgenda(rol, datosExtra, override) {
   // override.repoDir: abrir la agenda con los archivos de OTRA carpeta (p. ej. una mezcla con un archivo viejo)
   const rutaRepo = (override && override.repoDir) || null;
   const htmlFuente = rutaRepo ? fs.readFileSync(path.join(rutaRepo, "turnero/agenda.html"), "utf8") : srcHtml;
-  const scriptsFuente = rutaRepo ? ["js/turnero-motor.js", "js/turnero-formulario.js", "js/pacientes-cache.js", "js/pacientes-buscador.js", "js/turnero-carga.js", "js/turnero-grilla.js", "js/turnero-dia.js"].map((f) => fs.readFileSync(path.join(rutaRepo, f), "utf8")) : SCRIPTS;
+  const scriptsFuente = rutaRepo ? ["js/turnero-motor.js", "js/turnero-formulario.js", "js/pacientes-cache.js", "js/pacientes-buscador.js", "js/turnero-carga.js", "js/turnero-grilla.js", "js/turnero-dia.js", "js/turnero-puesto.js"].map((f) => fs.readFileSync(path.join(rutaRepo, f), "utf8")) : SCRIPTS;
   let html = htmlFuente.replace(/<script src="[^"]*"><\/script>/g, "");
   html = html.replace(/<script>\s*requireAuth[\s\S]*?<\/script>/, "");
   html = html.replace(/<script>\s*montarFormularioCarga[\s\S]*?<\/script>/, ""); // el montaje inline se rehace abajo, ya con los scripts cargados
   html = html.replace("</body>", `<script>${stubs}</script>` + scriptsFuente.map(s => `<script>${s}</script>`).join("") +
-    `<script>window.__listo = false; (async () => { try { montarFormularioCarga("formulario-carga"); await iniciarAgenda({ uid: "u-yo", email: "yo@x.com" }, ${JSON.stringify({ rol, nombre: "Yo", medicoId: "med1", ...(datosExtra || {}) })}); } catch (e) { window.__errInit = String(e && e.stack || e); } window.__listo = true; })();</script></body>`);
-  const dom = new JSDOM(html, { runScripts: "dangerously", pretendToBeVisual: true, virtualConsole: vc, url: (override && override.url) || "http://localhost/turnero/agenda.html",
+    `<script>window.__listo = false; (async () => { try { montarFormularioCarga("formulario-carga"); iniciarPuesto(${JSON.stringify(rol)}); await iniciarAgenda({ uid: "u-yo", email: "yo@x.com" }, ${JSON.stringify({ rol, nombre: "Yo", medicoId: "med1", ...(datosExtra || {}) })}); } catch (e) { window.__errInit = String(e && e.stack || e); } window.__listo = true; })();</script></body>`);
+  const dom = new JSDOM(html, { runScripts: "dangerously", pretendToBeVisual: true, virtualConsole: vc, url: (override && override.url) || "http://localhost/turnero/agenda.html?vista=semana", // B2a: sin parámetros la agenda abre en DÍA; las pruebas de la semana la piden a propósito
     beforeParse(window) {
       window.__STORE = { turneroSedes: (override && override.sedes) || SEDES, turneroMedicos: MEDICOS, turneroCupos: [], turneroBloqueos: [], pacientes: PACIENTES_FIX, turneroProtocolos: (override && override.protocolos) || PROTOCOLOS_FIX, turnos: (override && override.turnos) || TURNOS };
       window.__NOTAS = NOTAS;
       const DateReal = window.Date; const ahora = new DateReal(2030, 9, 9, 10, 32, 0).getTime();
       window.Date = class extends DateReal { constructor(...a) { if (a.length === 0) super(ahora); else super(...a); } static now() { return ahora; } };
-      window.scrollTo = () => {}; window.alert = () => {};
+      window.scrollTo = () => {}; window.alert = () => {}; window.setInterval = () => 0; // B2a: el cartel «leído hace…» usa un intervalo; sin esto la ventana simulada mantiene vivo el proceso de Node
     } });
   const w = dom.window;
   for (let i = 0; i < 400 && !w.__listo; i++) { await new Promise(r => setTimeout(r, 0)); }

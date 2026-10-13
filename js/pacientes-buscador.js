@@ -1,4 +1,4 @@
-(window.TURNERO_BUILD = window.TURNERO_BUILD || {})["pacientes-buscador"] = "B1-2026-10-12-a"; // marca de versión de este archivo (ver verificarVersionesTurnero)
+(window.TURNERO_BUILD = window.TURNERO_BUILD || {})["pacientes-buscador"] = "B2a-2026-10-12-a"; // marca de versión de este archivo (ver verificarVersionesTurnero)
 // ============================================================================================
 // Buscador único de pacientes (B1) — un componente que se "monta" sobre los ids de la pantalla.
 // Reemplaza las copias de buscarPaciente / seleccionarPaciente / actualizarListadoPacientes /

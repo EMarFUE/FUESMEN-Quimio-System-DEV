@@ -26,6 +26,8 @@ function _inyectarSpinner() {
 }
 
 function _revelarPagina() {
+  // B2a: una página abierta dentro del panel del Puesto (…?embed=1) oculta su encabezado y migas de pan.
+  if (/[?&]embed=1(&|$)/.test(window.location.search)) document.body.classList.add("embebido");
   document.body.style.visibility = "visible";
   const spinner = document.getElementById("auth-spinner");
   if (spinner) spinner.remove();

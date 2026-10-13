@@ -2659,3 +2659,361 @@ h1 {
   line-height: 1;
   cursor: pointer;
 }
+
+
+/* ==========================================================================
+   B2a — Puesto de la agenda (js/turnero-puesto.js)
+   Barra superior con desplegables, franja de paciente, panel derecho y modo embebido.
+   Se adapta al ancho: desde 1100 px el panel EMPUJA el contenido (y la lista del día, si queda
+   angosta, oculta la columna Médico); por debajo, se SUPERPONE a la derecha (sin mover el
+   calendario de la izquierda). La barra se parte en dos filas si no entra.
+   ========================================================================== */
+:root {
+  --ancho-panel-puesto: clamp(340px, 28vw, 440px);
+}
+
+.barra-puesto {
+  position: sticky;
+  top: 0;
+  z-index: 40;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px 6px;
+  min-height: 44px;
+  box-sizing: border-box;
+  padding: 5px 8px;
+  margin-bottom: 8px;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+}
+
+.titulo-barra-puesto {
+  padding: 0 12px 0 6px;
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--color-text);
+}
+
+.espacio-barra-puesto {
+  flex: 1 1 auto;
+}
+
+.menu-puesto {
+  position: relative;
+}
+
+.boton-menu-puesto,
+.boton-barra-puesto {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 34px;
+  padding: 0 12px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: none;
+  font-family: var(--font);
+  font-size: 13.5px;
+  color: var(--color-text);
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.boton-menu-puesto:hover,
+.boton-barra-puesto:hover {
+  background: var(--color-accent-soft);
+}
+
+.menu-puesto.abierto .boton-menu-puesto {
+  background: var(--color-accent-soft);
+  border-color: var(--color-border);
+}
+
+#menu-vista-puesto .boton-menu-puesto {
+  background: var(--color-accent-soft);
+  border-color: var(--color-accent);
+  font-weight: 600;
+}
+
+.flecha-menu-puesto {
+  font-size: 11px;
+  color: var(--color-muted);
+}
+
+.lista-menu-puesto {
+  display: none;
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  z-index: 50;
+  min-width: 230px;
+  padding: 4px;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  box-shadow: 0 6px 18px rgba(43, 53, 66, 0.14);
+}
+
+.menu-puesto.abierto .lista-menu-puesto {
+  display: block;
+}
+
+.opcion-menu-puesto {
+  display: block;
+  box-sizing: border-box;
+  width: 100%;
+  padding: 9px 10px;
+  border: none;
+  border-radius: 6px;
+  background: none;
+  font-family: var(--font);
+  font-size: 13.5px;
+  text-align: left;
+  color: inherit;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.opcion-menu-puesto:hover {
+  background: var(--color-bg);
+}
+
+.opcion-menu-puesto.marcada {
+  font-weight: 600;
+}
+
+.separador-menu-puesto {
+  height: 1px;
+  margin: 4px 2px;
+  background: var(--color-border);
+}
+
+/* Franja de paciente: fija debajo de la barra mientras se desplaza la lista. */
+.franja-paciente-puesto {
+  position: sticky;
+  top: 50px;
+  z-index: 35;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px 16px;
+  box-sizing: border-box;
+  padding: 7px 12px;
+  margin-bottom: 8px;
+  background: var(--color-accent-soft);
+  border: 1px solid var(--color-accent);
+  border-left-width: 5px;
+  border-radius: var(--radius);
+  font-size: 13.5px;
+}
+
+.franja-paciente-puesto[hidden] {
+  display: none;
+}
+
+.paciente-franja-puesto {
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.cerrar-franja-puesto {
+  margin-left: auto;
+  width: 28px;
+  height: 28px;
+  border: none;
+  border-radius: 6px;
+  background: none;
+  font-size: 18px;
+  color: var(--color-muted);
+  cursor: pointer;
+}
+
+.cerrar-franja-puesto:hover {
+  background: rgba(255, 255, 255, 0.7);
+}
+
+/* Fila elegida y su botón ▸. */
+.fila-turno-dia.elegido-puesto {
+  outline: 2px solid var(--color-accion-principal);
+  outline-offset: -2px;
+}
+
+.boton-elegir-puesto {
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  background: var(--color-surface);
+  font-size: 12px;
+  color: var(--color-accion-principal);
+  cursor: pointer;
+}
+
+.boton-elegir-puesto:hover,
+.boton-elegir-puesto.activo {
+  background: var(--color-accion-principal);
+  border-color: var(--color-accion-principal);
+  color: #fff;
+}
+
+/* Cartel «leído hace X min» junto al ↻ de la cabecera del día. */
+.cartel-lectura-puesto {
+  align-self: center;
+  padding: 3px 9px;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  font-size: 12px;
+  color: var(--color-muted);
+  white-space: nowrap;
+}
+
+.cartel-lectura-puesto.antiguo {
+  background: #fff3cd;
+  border-color: var(--color-prioridad-amarilla);
+  font-weight: 600;
+  color: #6b5100;
+}
+
+/* Panel derecho: por defecto SUPERPUESTO a la derecha (pantallas chicas). */
+.panel-puesto {
+  position: fixed;
+  top: 48px;
+  right: 0;
+  bottom: 0;
+  z-index: 60;
+  display: flex;
+  flex-direction: column;
+  width: min(var(--ancho-panel-puesto), 96vw);
+  background: var(--color-surface);
+  border-left: 1px solid var(--color-border);
+  box-shadow: -6px 0 18px rgba(43, 53, 66, 0.14);
+}
+
+.panel-puesto[hidden] {
+  display: none;
+}
+
+.cabecera-panel-puesto {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 8px;
+  background: var(--color-bg);
+  border-bottom: 1px solid var(--color-border);
+}
+
+.solapas-panel-puesto {
+  display: flex;
+  flex: 1 1 auto;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.solapa-panel-puesto {
+  padding: 6px 10px;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  background: var(--color-surface);
+  font-family: var(--font);
+  font-size: 13px;
+  color: var(--color-text);
+  cursor: pointer;
+}
+
+.solapa-panel-puesto.activa {
+  background: var(--color-accion-principal);
+  border-color: var(--color-accion-principal);
+  color: #fff;
+}
+
+.recargar-panel-puesto,
+.cerrar-panel-puesto {
+  width: 32px;
+  height: 32px;
+  border: none;
+  border-radius: 6px;
+  background: none;
+  font-size: 18px;
+  color: var(--color-muted);
+  cursor: pointer;
+}
+
+.recargar-panel-puesto:hover,
+.cerrar-panel-puesto:hover {
+  background: var(--color-surface);
+}
+
+.cuerpo-panel-puesto {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+.cuerpo-panel-puesto iframe {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  border: 0;
+  background: var(--color-bg);
+}
+
+.cuerpo-panel-puesto iframe[hidden] {
+  display: none;
+}
+
+/* Desde 1100 px el panel EMPUJA el contenido en vez de taparlo (así el ▸ y el ciclo siguen a la vista). */
+@media (min-width: 1100px) {
+  body.panel-puesto-abierto .contenedor-ancho {
+    box-sizing: border-box;
+    max-width: none;
+    margin: 0;
+    width: calc(100% - var(--ancho-panel-puesto));
+  }
+  .panel-puesto {
+    top: 0;
+    box-shadow: none;
+  }
+}
+
+/* Pantallas angostas: la barra no muestra el título y los menús ocupan menos. */
+@media (max-width: 700px) {
+  .titulo-barra-puesto {
+    display: none;
+  }
+  .boton-menu-puesto,
+  .boton-barra-puesto {
+    padding: 0 8px;
+  }
+}
+
+/* Páginas abiertas dentro del panel (…?embed=1): sin encabezado ni migas de pan, más angostas. */
+body.embebido .encabezado-sesion,
+body.embebido .breadcrumb {
+  display: none;
+}
+
+body.embebido .contenedor {
+  max-width: none;
+  padding: 14px 16px;
+}
+
+/* Lista del día angosta (p. ej. pantalla de 1280 px con el panel abierto): se oculta la columna Médico
+   —la 5.ª, tanto en el encabezado como en cada fila— para que entren el ciclo, los indicadores y el ▸. */
+.columna-principal-dia {
+  container-type: inline-size;
+  container-name: columna-dia;
+}
+
+@container columna-dia (max-width: 720px) {
+  .fila-turno-dia {
+    grid-template-columns: 36px 92px 44px minmax(120px, 1.6fr) 100px minmax(100px, auto);
+    min-width: 540px;
+  }
+  .fila-turno-dia > :nth-child(5) {
+    display: none;
+  }
+}

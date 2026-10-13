@@ -4,10 +4,16 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Agenda semanal · Servicio de quimioterapia</title>
-  <link rel="stylesheet" href="../css/styles.css?v=B1-2026-10-12-a" />
+  <link rel="stylesheet" href="../css/styles.css?v=B2a-2026-10-12-a" />
 </head>
 <body style="visibility:hidden">
   <div class="contenedor-ancho pantalla-grilla">
+    <!-- B2a: barra del Puesto (js/turnero-puesto.js). El desplegable de vista (Día / Semana / Mes)
+         reemplaza a los botones Día | Semana | Mes que estaban en la barra de la semana y en la
+         lateral del día. Lo que ve cada rol sale de opcionesPuestoPorRol(). -->
+    <nav id="barra-puesto" class="barra-puesto" aria-label="Barra de la agenda"></nav>
+    <!-- B2a: franja de paciente fija (se llena con el botón ▸ de una fila del día). -->
+    <div id="franja-paciente-puesto" class="franja-paciente-puesto" hidden></div>
     <div id="mensaje-agenda" class="mensaje-info" style="display:none;"></div>
 
     <!-- Etapa 5: barra en tres zonas (ver .barra-controles-grilla en styles.css). Los ids no
@@ -21,11 +27,7 @@
         </select>
       </div>
       <div class="zona-navegacion-barra">
-        <div class="selector-vista-grilla" role="group" aria-label="Vista de la agenda">
-          <button type="button" onclick="irADiaDesdeSemanaGrilla()" title="Ver la agenda de un día">Día</button>
-          <button type="button" class="activo" aria-pressed="true">Semana</button>
-          <button type="button" onclick="irAMesGrilla()" title="Ver el mes (solo consulta)">Mes</button>
-        </div>
+        <!-- B2a: el selector de vista (Día | Semana | Mes) pasó al desplegable de la barra del Puesto. -->
         <div class="navegador-fechas-grilla">
           <button type="button" class="boton-nav-grilla icono" onclick="cambiarSemanaGrilla(-1)" title="Semana anterior" aria-label="Semana anterior">‹</button>
           <span class="etiqueta-semana-grilla" id="etiqueta-semana-grilla"></span>
@@ -70,11 +72,6 @@
       <aside class="lateral-dia">
         <div id="calendario-dia" class="calendario-dia"></div>
         <div class="controles-lateral-dia">
-          <div class="selector-vista-grilla" role="group" aria-label="Vista de la agenda">
-            <button type="button" class="activo" aria-pressed="true">Día</button>
-            <button type="button" onclick="irASemanaDesdeDiaDia()">Semana</button>
-            <button type="button" onclick="irAMesDesdeDiaDia()">Mes</button>
-          </div>
           <div class="grupo-lateral-dia">
             <span class="rotulo-lateral-dia">Sede</span>
             <div id="slot-sede-dia"></div>
@@ -101,6 +98,7 @@
             <button type="button" onclick="irAHoyDia()">Hoy</button>
             <button type="button" onclick="cambiarDiaDia(1)" title="Día siguiente" aria-label="Día siguiente">›</button>
             <button type="button" class="icono" onclick="actualizarDiaDia()" title="Actualizar este día (vuelve a leerlo de la base)" aria-label="Actualizar este día">↻</button>
+            <span id="cartel-lectura-puesto" class="cartel-lectura-puesto" aria-live="polite"></span>
           </div>
           <div id="slot-menu-cuenta-dia" class="slot-menu-cuenta-dia"></div>
         </header>
@@ -108,6 +106,18 @@
       </section>
     </div>
   </div>
+
+  <!-- B2a: panel derecho del Puesto. Solapas = páginas actuales embebidas (?embed=1), cargadas la
+       primera vez que se abre cada una. En pantallas grandes empuja el contenido; en las chicas se
+       superpone (ver "Puesto" en css/styles.css). -->
+  <aside id="panel-puesto" class="panel-puesto" aria-label="Panel lateral" hidden>
+    <div class="cabecera-panel-puesto">
+      <div id="solapas-panel-puesto" class="solapas-panel-puesto" role="tablist"></div>
+      <button type="button" class="recargar-panel-puesto" onclick="recargarPestanaPanelPuesto()" title="Volver a cargar esta solapa" aria-label="Volver a cargar esta solapa">↻</button>
+      <button type="button" class="cerrar-panel-puesto" onclick="cerrarPanelPuesto()" title="Cerrar el panel" aria-label="Cerrar el panel">×</button>
+    </div>
+    <div id="cuerpo-panel-puesto" class="cuerpo-panel-puesto"></div>
+  </aside>
 
   <!-- Modal "+ nuevo turno" (Fase 2) — mismo formulario que carga.html, montado desde
        js/turnero-formulario.js (Etapa 5C, P4), sin tocar su lógica interna
@@ -344,17 +354,18 @@
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
   <script src="../js/firebase-config.js"></script>
   <script src="../js/auth.js"></script>
-  <script src="../js/turnero-motor.js?v=B1-2026-10-12-a"></script>
-  <script src="../js/turnero-formulario.js?v=B1-2026-10-12-a"></script>
-  <script src="../js/pacientes-cache.js?v=B1-2026-10-12-a"></script>
-  <script src="../js/pacientes-buscador.js?v=B1-2026-10-12-a"></script>
-  <script src="../js/turnero-carga.js?v=B1-2026-10-12-a"></script>
-  <script src="../js/turnero-grilla.js?v=B1-2026-10-12-a"></script>
-  <script src="../js/turnero-dia.js?v=B1-2026-10-12-a"></script>
+  <script src="../js/turnero-motor.js?v=B2a-2026-10-12-a"></script>
+  <script src="../js/turnero-formulario.js?v=B2a-2026-10-12-a"></script>
+  <script src="../js/pacientes-cache.js?v=B2a-2026-10-12-a"></script>
+  <script src="../js/pacientes-buscador.js?v=B2a-2026-10-12-a"></script>
+  <script src="../js/turnero-carga.js?v=B2a-2026-10-12-a"></script>
+  <script src="../js/turnero-grilla.js?v=B2a-2026-10-12-a"></script>
+  <script src="../js/turnero-dia.js?v=B2a-2026-10-12-a"></script>
+  <script src="../js/turnero-puesto.js?v=B2a-2026-10-12-a"></script>
   <script>
     // Aviso si algún archivo del sistema quedó en una versión vieja en el navegador (ver turnero-formulario.js).
     window.addEventListener("load", function () {
-      if (typeof verificarVersionesTurnero === "function") verificarVersionesTurnero(["formulario", "carga", "grilla", "pacientes-cache", "pacientes-buscador"]);
+      if (typeof verificarVersionesTurnero === "function") verificarVersionesTurnero(["formulario", "carga", "grilla", "puesto", "pacientes-cache", "pacientes-buscador"]);
     });
   </script>
   <script>
@@ -366,6 +377,7 @@
       document.getElementById("datos-sesion").innerHTML =
         `Hola, <strong>${escaparHtmlGrilla(datosUsuario.nombre || user.email)}</strong> · rol: <strong>${rolLabel}</strong>`;
 
+      iniciarPuesto(datosUsuario.rol); // B2a: barra, panel y refresco (turnero-puesto.js)
       await iniciarAgenda(user, datosUsuario);
     }, "../login.html");
   </script>

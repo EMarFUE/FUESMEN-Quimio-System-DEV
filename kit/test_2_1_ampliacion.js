@@ -1,6 +1,8 @@
 const fs = require("fs");
 const path = require("path");
 const { JSDOM } = require("jsdom");
+// Fecha futura calculada (hoy + 60 días): una fecha fija vence y el sistema rechaza turnos en el pasado.
+const FECHA_FUTURA_PRUEBA = JSON.stringify(new Date(Date.now() + 60 * 86400000).toISOString().slice(0, 10)).slice(1, -1);
 
 function assert(cond, msg) {
   if (!cond) { throw new Error("FALLA: " + msg); }
@@ -282,7 +284,7 @@ async function correrAnularYCrear(turnoOriginal, camposNuevos, tipoAccion) {
       window.__spyNormal = null;
       guardarTurnoInternado = async function(datosBasicos, horarioManualString) { window.__spyInternado = { datosBasicos, horarioManualString }; };
       buscarYGuardarConHorarioManual = async function(datosBasicos, horarioManualString) { window.__spyNormal = { datosBasicos, horarioManualString }; };
-      document.getElementById("campo-fecha-reasignar-grilla").value = "2026-10-10";
+      document.getElementById("campo-fecha-reasignar-grilla").value = "${FECHA_FUTURA_PRUEBA}";
       document.getElementById("campo-horario-manual-reasignar-grilla").value = "15:00";
       window.__listo = false;
       buscarReasignarHorarioManualGrilla().then(() => { window.__listo = true; });

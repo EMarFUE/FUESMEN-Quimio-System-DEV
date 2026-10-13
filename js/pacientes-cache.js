@@ -1,4 +1,4 @@
-(window.TURNERO_BUILD = window.TURNERO_BUILD || {})["pacientes-cache"] = "B1-2026-10-12-a"; // marca de versión de este archivo (ver verificarVersionesTurnero)
+(window.TURNERO_BUILD = window.TURNERO_BUILD || {})["pacientes-cache"] = "B2a-2026-10-12-a"; // marca de versión de este archivo (ver verificarVersionesTurnero)
 // ============================================================================================
 // Caché único del listado de pacientes activos (B1)
 // Antes había una copia en entregas.js, egresos.js, historial.js y turnero-carga.js (y cada

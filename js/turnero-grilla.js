@@ -1,4 +1,4 @@
-(window.TURNERO_BUILD = window.TURNERO_BUILD || {}).grilla = "B1-2026-10-12-a"; // marca de versión de este archivo (ver verificarVersionesTurnero)
+(window.TURNERO_BUILD = window.TURNERO_BUILD || {}).grilla = "B2a-2026-10-12-a"; // marca de versión de este archivo (ver verificarVersionesTurnero)
 // Vista de agenda semanal — Etapa T6 del Módulo de Turnero.
 // Fase 1 (de 3): grilla de solo lectura. Elegir sede, navegar la semana, ver los
 // turnos ya cargados como tarjetas dentro de su día y horario, con el sillón
@@ -198,8 +198,13 @@ async function iniciarAgenda(user, datosUsuario) {
 // se ignoran.
 function aplicarParametrosUrlGrilla() {
   const resultado = { turnoId: null, vista: null, fecha: null, nuevoTurno: false };
-  if (!window.location.search) return resultado;
+  // B2a: sin ?vista= ni ?fecha= (entrada normal al sistema) la agenda abre en la vista de DÍA de hoy, para
+  // todos los roles. Con ?fecha= sin ?vista= (enlaces de la mensual) sigue siendo la semana, y ?vista=semana
+  // la pide a propósito.
   const params = new URLSearchParams(window.location.search);
+  const abrirDiaDeHoy = !params.has("vista") && !params.has("fecha");
+  if (abrirDiaDeHoy) { resultado.vista = "dia"; resultado.fecha = fechaISO(new Date()); }
+  if (!window.location.search) return resultado;
 
   const sede = params.get("sede");
   if (sede && sedesCacheGrilla.some(s => s.id === sede)) sedeSeleccionadaGrilla = sede;
@@ -219,7 +224,7 @@ function aplicarParametrosUrlGrilla() {
   if (medico) medicoFiltroGrilla = medico;
 
   resultado.turnoId = params.get("turno") || null;
-  resultado.vista = params.get("vista") === "dia" ? "dia" : null;
+  resultado.vista = (params.get("vista") === "dia" || abrirDiaDeHoy) ? "dia" : null;
   resultado.nuevoTurno = params.get("nuevo") === "1"; // Etapa 5C (2.3): abrir el formulario de nuevo turno
   window.history.replaceState(null, "", window.location.pathname);
   return resultado;

@@ -199,6 +199,7 @@ function mostrarModoDia(activo) {
   document.querySelector(".contenedor-ancho").classList.toggle("pantalla-grilla", !activo);
   document.querySelector(".grilla-scroll-grilla").style.display = activo ? "none" : "";
   document.getElementById("vista-dia").style.display = activo ? "grid" : "none";
+  if (typeof alCambiarModoPuesto === "function") alCambiarModoPuesto(); // B2a: el desplegable de vista muestra el modo vigente
 }
 
 // Punto de entrada: encabezado de un día de la semana, número de día del mes, o la URL
@@ -375,6 +376,7 @@ function renderizarDia() {
   renderizarBarraDia();
   renderizarCalendarioDia();
   renderizarPanelDia();
+  if (typeof alRenderizarDiaPuesto === "function") alRenderizarDiaPuesto(); // B2a: franja de paciente y cartel «leído hace…»
 }
 
 function renderizarCalendarioDia() {
@@ -519,6 +521,11 @@ function renderizarFilaTurnoDia(turno, sede) {
   const horarioManualHtml = turno.horarioManual === true
     ? `<span class="badge-horario-manual-dia" title="Cargado con horario manual (no se reacomoda de sillón)">⏱</span>`
     : "";
+  // B2a: ▸ elige el turno para la franja de paciente (el clic en la fila sigue abriendo el detalle).
+  const elegido = typeof turnoElegidoPuesto !== "undefined" && turnoElegidoPuesto === turno.id;
+  const elegirHtml = `<button type="button" class="boton-elegir-puesto ${elegido ? "activo" : ""}" title="${elegido ? "Quitar de la franja de paciente" : "Ver este paciente en la franja de arriba"}"
+      aria-pressed="${elegido ? "true" : "false"}"
+      onclick="event.stopPropagation(); elegirTurnoPuesto('${escaparHtmlGrilla(turno.id)}')">▸</button>`;
   const notasHtml = `<button type="button" class="boton-notas-dia" title="${cantidadNotas > 0 ? `Comentarios (${cantidadNotas})` : "Agregar un comentario"}"
       onclick="event.stopPropagation(); abrirNotasTurnoGrilla('${escaparHtmlGrilla(turno.id)}')">💬${cantidadNotas > 0 ? cantidadNotas : ""}</button>`;
 
@@ -527,7 +534,7 @@ function renderizarFilaTurnoDia(turno, sede) {
     : "—";
 
   return `
-    <div class="fila-turno-dia ${estaPresente ? "presente-dia" : ""} ${prioridad ? `borde-prioridad-${escaparHtmlGrilla(prioridad)}-dia` : ""}"
+    <div class="fila-turno-dia ${estaPresente ? "presente-dia" : ""} ${elegido ? "elegido-puesto" : ""} ${prioridad ? `borde-prioridad-${escaparHtmlGrilla(prioridad)}-dia` : ""}"
       data-turno-id="${escaparHtmlGrilla(turno.id)}" title="${escaparHtmlGrilla(tooltip)}"
       onclick="abrirDetalleTurnoGrilla('${escaparHtmlGrilla(turno.id)}')">
       ${celdaPresenteHtml}
@@ -536,6 +543,6 @@ function renderizarFilaTurnoDia(turno, sede) {
       <span class="paciente-dia">${escaparHtmlGrilla(pacienteCompleto)}</span>
       <span class="medico-dia">${escaparHtmlGrilla(turno.medicoNombre || "-")}</span>
       <span class="ciclo-dia">${escaparHtmlGrilla(cicloSesion)}</span>
-      <span class="indicadores-dia">${prioridadHtml}${reacomodoHtml}${horarioManualHtml}${notasHtml}</span>
+      <span class="indicadores-dia">${prioridadHtml}${reacomodoHtml}${horarioManualHtml}${notasHtml}${elegirHtml}</span>
     </div>`;
 }

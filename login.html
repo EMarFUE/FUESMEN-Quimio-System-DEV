@@ -35,13 +35,17 @@
   <script src="js/firebase-config.js"></script>
   <script src="js/auth.js"></script>
   <script>
+    // Si la sesión se perdió con el login abierto dentro del panel del Puesto (iframe), se sale al login completo.
+    if (window.top !== window.self) window.top.location.href = window.location.href;
     const form = document.getElementById("form-login");
     const mensajeError = document.getElementById("mensaje-error");
     const botonIngresar = document.getElementById("boton-ingresar");
 
-    // Si ya hay una sesión activa, va directo al panel de inicio
+    // B2a: al iniciar sesión (y con una sesión ya activa) se entra directo a la agenda del día, para todos
+    // los roles. La portada de módulos (index.html) queda a un clic: «Inicio» en la barra de la agenda.
+    const DESTINO_INICIAL = "turnero/agenda.html";
     auth.onAuthStateChanged((user) => {
-      if (user) window.location.href = "index.html";
+      if (user) window.location.href = DESTINO_INICIAL;
     });
 
     form.addEventListener("submit", async (e) => {
@@ -55,7 +59,7 @@
 
       try {
         await auth.signInWithEmailAndPassword(email, password);
-        window.location.href = "index.html";
+        window.location.href = DESTINO_INICIAL;
       } catch (error) {
         mensajeError.textContent = traducirErrorAuth(error.code);
         mensajeError.style.display = "block";

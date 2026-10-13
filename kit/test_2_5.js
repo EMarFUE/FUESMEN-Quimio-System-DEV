@@ -1,6 +1,8 @@
 const fs = require("fs");
 const path = require("path");
 const { JSDOM } = require("jsdom");
+// Fecha futura calculada (hoy + 60 días): una fecha fija vence y el sistema rechaza turnos en el pasado.
+const FECHA_FUTURA_PRUEBA = JSON.stringify(new Date(Date.now() + 60 * 86400000).toISOString().slice(0, 10)).slice(1, -1);
 
 function assert(cond, msg) {
   if (!cond) { throw new Error("FALLA: " + msg); }
@@ -64,7 +66,7 @@ function correrGuardado(rol) {
     document.getElementById("campo-medico").value = "med1";
     document.getElementById("campo-ciclo").value = "2";
     document.getElementById("campo-sesion").value = "3";
-    document.getElementById("campo-fecha").value = "2026-10-10";
+    document.getElementById("campo-fecha").value = "${FECHA_FUTURA_PRUEBA}";
     document.getElementById("campo-premedicacion").checked = false;
     document.getElementById("campo-horario-manual").value = "14:30";
 
